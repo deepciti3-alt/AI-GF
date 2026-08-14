@@ -1,0 +1,17 @@
+{
+  "name": "Aria OS — your companion",
+  "short_name": "Aria OS",
+  "description": "A private AI companion. Multiple personalities, real memory, and a voice you can clone from a chat.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0B1F3A",
+  "categories": ["lifestyle", "social"],
+  "icons": [
+    { "src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

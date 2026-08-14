@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<title>Aria OS — your companion</title>
+<meta name="description" content="A private AI companion. Multiple personalities, real memory, and a voice you can clone from a chat.">
+<meta name="theme-color" content="#0B1F3A">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./assets/icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Skip to content</a>
+
+  <!-- everything below is rendered by JS -->
+  <div id="app"></div>
+  <div id="overlayRoot"></div>
+  <div id="gate" class="gate-root hidden gone" aria-label="Access required"></div>
+  <div id="cursorGlow" aria-hidden="true"></div>
+  <div class="toast-region" id="toasts" aria-live="polite"></div>
+  <input id="fileInput" class="hidden" type="file" multiple
+         accept=".txt,.md,.json,.csv,.srt,.vtt,.pdf" aria-label="Attach chat files">
+  <input id="imageInput" class="hidden" type="file" accept="image/*" aria-label="Attach an image">
+
+  <noscript>
+    <div style="padding:40px;font:16px system-ui;text-align:center">
+      This app needs JavaScript. Please enable it and reload.
+    </div>
+  </noscript>
+
+  <!-- ============================================================
+       Load order matters, exactly like NutriWeb:
+         cloud  → admin  → config → store → api → memory → clone → ui → app
+       Classic scripts (not ES modules) so the app also runs from
+       file:// and from any plain static host with no build step.
+       ============================================================ -->
+  <script src="./js/supabase.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/store.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/memory.js"></script>
+  <script src="./js/clone.js"></script>
+  <script src="./js/ui.js"></script>
+  <script src="./js/admin.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
