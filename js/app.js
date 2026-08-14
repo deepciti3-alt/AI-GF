@@ -48,6 +48,7 @@
     cloneBusy: false,
     cloneStatus: '',
     authMode: 'in',
+    authPhone: '',
     settingsTab: 'you',
     models: null,
     modelsBusy: false,
@@ -81,16 +82,21 @@
 
   function shell(content) {
     const st = S.store;
-    const email = st.account.email === 'local' ? '' : st.account.email;
-    const name = st.account.name || email || 'You';
-    const initials = String(name).trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || '?';
-    const nav = NAV.concat(isAdminUser() ? [['admin', 'Admin']] : []);
+    const admin = isAdminUser();
+    const name = st.account.name
+      || (st.account.phone ? GfCloud.prettyPhone(st.account.phone) : '')
+      || 'You';
+    const initials = admin ? '★'
+      : (String(name).trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || '?');
+    /* The admin account is a command centre, not a companion account —
+       it gets the panel and nothing else, exactly like NutriWeb. */
+    const nav = admin ? [['admin', 'Admin']] : NAV;
     const dark = st.settings.theme === 'dark';
 
     return `<div class="app-shell">
       <aside class="rail">
         <div class="brand"><span class="brand__mark">♥</span><span>Aria OS</span></div>
-        <button class="newchat" data-action="new-companion">${ICONS.plus} New companion</button>
+        ${admin ? '' : `<button class="newchat" data-action="new-companion">${ICONS.plus} New companion</button>`}
         <nav class="nav" aria-label="Primary">${nav.map(([id, l]) => navButton(id, l)).join('')}</nav>
         <div class="rail__bottom">
           <div class="themeswitch" data-action="toggle-theme" role="switch"
@@ -104,8 +110,8 @@
             <div class="user-chip__meta">
               <div class="user-chip__name">${esc(name)}</div>
               <div class="user-chip__role">${
-                GfAccess.isCloud()
-                  ? (isAdminUser() ? 'Administrator · cloud' : 'Cloud account')
+                admin ? 'Administrator'
+                  : GfAccess.isCloud() ? (st.account.phone ? 'Signed in' : 'Cloud account')
                   : 'This device only'
               }</div>
             </div>
@@ -119,15 +125,16 @@
         <div class="row row--tight">
           <button class="iconbtn" data-action="toggle-theme"
                   aria-label="${dark ? 'Switch to light mode' : 'Switch to dark mode'}">${dark ? ICONS.sun : ICONS.moon}</button>
-          <button class="iconbtn" data-action="new-companion" aria-label="New companion">${ICONS.plus}</button>
-          <button class="iconbtn" data-nav="settings" aria-label="Settings">${ICONS.settings}</button>
+          ${admin ? '' : `<button class="iconbtn" data-action="new-companion" aria-label="New companion">${ICONS.plus}</button>`}
+          ${admin ? `<button class="iconbtn" data-action="logout" aria-label="Sign out">${ICONS.logout}</button>`
+                  : `<button class="iconbtn" data-nav="settings" aria-label="Settings">${ICONS.settings}</button>`}
         </div>
       </header>
 
       <main class="main" id="mainContent" tabindex="-1">${content}</main>
 
-      <nav class="bottom-nav" aria-label="Mobile navigation">
-        ${MOBILE_NAV.map(([id, l]) => navButton(id, l, true)).join('')}
+      <nav class="bottom-nav ${admin ? 'bottom-nav--solo' : ''}" aria-label="Mobile navigation">
+        ${(admin ? [['admin', 'Admin']] : MOBILE_NAV).map(([id, l]) => navButton(id, l, true)).join('')}
       </nav>
     </div>`;
   }
@@ -565,19 +572,26 @@
 
     /* the provider card only appears when there is no cloud — in cloud mode
        the admin hands the keys down and there is nothing here to set */
+    /* In cloud mode a user has NO API surface at all — no provider, no key,
+       no model, no test button. The admin loads the keys centrally and they
+       arrive at runtime. All the user ever sees is whether it is working. */
     const providerCard = cloud ? `
         <h2>AI</h2>
-        <div class="prow"><span class="pl">Status</span><span class="pv">${
-          window.GfApi.ready() ? '✅ ready' : '⏳ waiting for a key'
-        }</span></div>
-        <div class="prow"><span class="pl">Provider</span><span class="pv">${esc(C.PROVIDERS[s.provider]?.label || s.provider)}</span></div>
-        <div class="prow"><span class="pl">Keys available</span><span class="pv">${window.GfKeys.length}</span></div>
-        <p class="muted" style="margin-top:12px;font-size:12.5px">Keys are managed centrally.
-          You do not need your own.</p>
-        ${isAdminUser() ? '<button class="btn btn--small" data-nav="admin" style="margin-top:10px">Open the admin panel</button>' : ''}`
+        <div class="row row--tight" style="margin:10px 0 2px">
+          <span class="dot ${window.GfApi.ready() ? '' : 'dot--off'}"></span>
+          <strong style="font-size:14px">${window.GfApi.ready() ? 'Ready' : 'Not available yet'}</strong>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:6px 0 0">${
+          window.GfApi.ready()
+            ? 'Everything is set up for you. There is nothing here to configure.'
+            : (GfAccess.hasAccess()
+                ? 'The AI has not been switched on yet. Try again shortly.'
+                : 'Your access has run out — redeem a code below to switch it back on.')
+        }</p>`
     : `
         <h2>Your API key</h2>
-        <p class="muted">Nothing leaves this browser except the calls you configure here.</p>
+        <p class="muted">Running without a cloud, so bring your own. Nothing leaves this
+          browser except the calls you configure here.</p>
         <div class="field" style="margin-top:14px">
           <label for="setProvider">Provider</label>
           <select class="select" id="setProvider" data-set-select="provider">
@@ -619,10 +633,11 @@
     const planCard = cloud ? `
         <h2>Your plan</h2>
         <div class="prow"><span class="pl">Status</span><span class="pv">${esc(GfAccess.statusLine())}</span></div>
-        <div class="prow"><span class="pl">Signed in as</span><span class="pv mono">${esc(st.account.email || '')}</span></div>
+        <div class="prow"><span class="pl">Signed in as</span><span class="pv mono">${esc(GfCloud.prettyPhone(st.account.phone || ''))}</span></div>
         ${GfAccess.get()?.coupon_used ? `<div class="prow"><span class="pl">Coupon used</span><span class="pv mono">${esc(GfAccess.get().coupon_used)}</span></div>` : ''}
         <div class="btnrow" style="margin-top:14px">
           <button class="btn btn--hot" data-action="coupon">🎟️ Redeem a code</button>
+          <button class="btn btn--soft" data-action="change-password">Change password</button>
           <button class="btn btn--soft" data-action="logout">Sign out</button>
         </div>` : '';
 
@@ -704,43 +719,54 @@
      ============================================================ */
 
   function renderAuth() {
-    const mode = U.authMode;
-    const title = mode === 'up' ? 'Make an account' : mode === 'reset' ? 'Reset your password' : 'Welcome back';
+    const mode = U.authMode;                    // 'in' | 'up'
+    const up = mode === 'up';
     return `<div class="gate-root" style="position:relative;min-height:100vh">
       <section class="gate-card">
-        <div class="brand" style="padding:0 0 14px"><span class="brand__mark">♥</span><span>Aria OS</span></div>
-        <h2>${esc(title)}</h2>
-        <p class="muted" style="font-size:13px;margin:6px 0 18px">
-          ${mode === 'up' ? 'Your chats sync to your account and stay yours.'
-            : mode === 'reset' ? "We'll email you a link."
-            : 'Sign in to pick up where you left off.'}
+        <div class="brand" style="padding:0 0 16px"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <h2>${up ? 'Make an account' : 'Welcome back'}</h2>
+        <p class="muted" style="font-size:13px;margin:6px 0 20px">
+          ${up
+            ? 'Your number and a password. Nothing else — no email, no code to wait for.'
+            : 'Sign in once and this device stays signed in.'}
         </p>
-        <form id="authForm">
-          ${mode === 'up' ? `<div class="field">
-            <label for="auName">Your name</label>
-            <input class="input" id="auName" name="name" autocomplete="name">
-          </div>` : ''}
+
+        <form id="authForm" autocomplete="on">
           <div class="field">
-            <label for="auEmail">Email</label>
-            <input class="input" id="auEmail" name="email" type="email" required autocomplete="email">
+            <label for="auPhone">Mobile number</label>
+            <div class="phonefield">
+              <span class="phonefield__cc">+91</span>
+              <input class="input mono" id="auPhone" name="phone" type="tel" inputmode="numeric"
+                     placeholder="98739 93559" required autocomplete="username"
+                     maxlength="15" value="${esc(U.authPhone || '')}">
+            </div>
           </div>
-          ${mode !== 'reset' ? `<div class="field">
-            <label for="auPass">Password</label>
-            <input class="input" id="auPass" name="password" type="password" required
-              autocomplete="${mode === 'up' ? 'new-password' : 'current-password'}" minlength="6">
+
+          ${up ? `<div class="field">
+            <label for="auName">What should she call you?</label>
+            <input class="input" id="auName" name="name" autocomplete="name" placeholder="optional">
           </div>` : ''}
-          <button class="btn btn--hot btn--wide" type="submit">
-            ${mode === 'up' ? 'Create account' : mode === 'reset' ? 'Send the link' : 'Sign in'}
+
+          <div class="field">
+            <label for="auPass">Password</label>
+            <input class="input" id="auPass" name="password" type="password" required minlength="6"
+                   autocomplete="${up ? 'new-password' : 'current-password'}"
+                   placeholder="${up ? 'at least 6 characters' : ''}">
+          </div>
+
+          <button class="btn btn--hot btn--wide" type="submit" id="authGo">
+            ${up ? 'Create my account' : 'Sign in'}
           </button>
           <p class="gate-msg" id="authError"></p>
         </form>
+
         <hr class="divider">
-        <div class="row row--between">
-          <button class="btn btn--small btn--soft" data-authmode="${mode === 'up' ? 'in' : 'up'}">
-            ${mode === 'up' ? 'I already have an account' : 'Make an account'}
-          </button>
-          ${mode !== 'reset' ? '<button class="btn btn--small btn--ghost" data-authmode="reset">Forgot password</button>' : ''}
-        </div>
+        <button class="btn btn--small btn--soft btn--wide" data-authmode="${up ? 'in' : 'up'}">
+          ${up ? 'I already have an account' : "I'm new — make me an account"}
+        </button>
+        <p class="muted" style="font-size:11.5px;text-align:center;margin:14px 0 0;line-height:1.5">
+          New accounts get a free trial. 18+ only.
+        </p>
       </section>
     </div>`;
   }
@@ -799,7 +825,8 @@
       ? { id: a.id, name: a.name, value: a.value, start: a.selectionStart, end: a.selectionEnd }
       : null;
 
-    // 3 · full re-render
+    // 3 · full re-render — the admin is pinned to the panel
+    if (isAdminUser()) page = 'admin';
     $('#app').innerHTML = shell((VIEWS[page] || renderChat)());
 
     // 4 · after
@@ -832,6 +859,7 @@
 
   function go(next) {
     if (next === 'more') { openMorePicker(); return; }
+    if (isAdminUser() && next !== 'admin') return;   // the admin has one screen
     page = next;
     render();
     window.scrollTo({ top: 0 });
@@ -1500,6 +1528,32 @@
         }
 
         case 'coupon': GfGate.couponSheet(); break;
+        case 'change-password':
+          modal('Change your password', `
+            <div class="field">
+              <label for="pwNew">New password</label>
+              <input class="input" id="pwNew" type="password" minlength="6" placeholder="at least 6 characters">
+            </div>
+            <button class="btn btn--hot btn--wide" id="pwGo">Save it</button>
+            <p class="gate-msg" id="pwMsg"></p>`);
+          setTimeout(() => {
+            const b = $('#pwGo');
+            if (!b) return;
+            b.onclick = async () => {
+              const v = $('#pwNew').value;
+              b.disabled = true; b.textContent = 'Saving…';
+              try {
+                await GfCloud.updatePassword(v);
+                closeOverlay();
+                toast('Password changed.');
+              } catch (e2) {
+                $('#pwMsg').textContent = e2.message;
+                b.disabled = false; b.textContent = 'Save it';
+              }
+            };
+            $('#pwNew')?.focus();
+          }, 30);
+          break;
         case 'admin-reload': GfAdmin.reload(); break;
 
         case 'logout':
@@ -1593,21 +1647,26 @@
 
       if (form.id === 'authForm') {
         const fd = new FormData(form);
-        const email = String(fd.get('email') || '').trim();
+        const phone = String(fd.get('phone') || '').trim();
         const password = String(fd.get('password') || '');
         const nm = String(fd.get('name') || '').trim();
         const err = $('#authError');
-        if (err) err.textContent = 'Working…';
+        const go = $('#authGo');
 
-        if (U.authMode === 'reset') {
-          await GfCloud.sendReset(email);
-          if (err) err.textContent = 'Check your inbox for the link.';
-          return;
-        }
-        if (U.authMode === 'up') await GfCloud.signUpEmail(email, password, nm);
-        else await GfCloud.signInEmail(email, password);
+        U.authPhone = phone;
         if (err) err.textContent = '';
-        // onCloudAuth takes it from here
+        if (go) { go.disabled = true; go.textContent = 'Working…'; }
+
+        try {
+          if (U.authMode === 'up') await GfCloud.signUpPhone(phone, password, nm);
+          else await GfCloud.signInPhone(phone, password);
+          // onCloudAuth takes it from here
+        } finally {
+          if (go && document.contains(go)) {
+            go.disabled = false;
+            go.textContent = U.authMode === 'up' ? 'Create my account' : 'Sign in';
+          }
+        }
         return;
       }
     } catch (e) {
@@ -1767,8 +1826,10 @@
 
   async function onCloudAuth(user) {
     if (user) {
-      S.open(user.email, user.user_metadata?.name || '');
+      const phone = GfCloud.emailToPhone(user.email);
+      S.open(user.email, user.user_metadata?.name || '', phone);
       S.store.account.cloud = true;
+      S.store.account.phone = phone;
       await refreshAccess(user.user_metadata?.name);
       const remote = await GfCloud.pull().catch(() => null);
       if (remote && remote.companions && Object.keys(remote.companions).length) {
@@ -1778,6 +1839,7 @@
           try { S.importAll({ product: 'Aria OS', data: remote }); } catch (_) {}
         }
       }
+      if (isAdminUser()) page = 'admin';
       booted = true;
       render();
     } else {

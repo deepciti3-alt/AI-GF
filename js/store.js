@@ -2,8 +2,11 @@
    store.js — every byte of state, and where it lives.
 
    Two storage buckets per account:
-     ariaos_v1.<email>          the whole store (chats, memory, settings)
-     ariaos_v1.<email>.media    generated pictures, base64
+     ariaos_v1.<account>          the whole store (chats, memory, settings)
+     ariaos_v1.<account>.media    generated pictures, base64
+
+   The bucket is keyed by the account's internal address, so two
+   people sharing a device never see each other's chats.
 
    Pictures live apart on purpose. The main blob is rewritten on
    every single message, and stringifying a few megabytes of image
@@ -82,7 +85,7 @@
     const { companions, order } = defaultCompanions(name);
     return {
       version: 1,
-      account: { email: email || '', name: name || '', cloud: false },
+      account: { email: email || '', phone: '', name: name || '', cloud: false },
       settings: {
         provider: C.DEFAULT_PROVIDER,
         model: C.DEFAULT_MODEL_FOR(C.DEFAULT_PROVIDER),
@@ -209,7 +212,7 @@
   /* Open (or create) the bucket for this account. Two people sharing a
      device must never see each other's chats, so a bucket is only reused
      when the email provably matches. */
-  function open(email, name) {
+  function open(email, name, phone) {
     const bucket = bucketFor(email);
     S.bucket = bucket;
     S.mediaBucket = mediaBucketFor(email);
@@ -221,6 +224,7 @@
 
     S.store = migrate(ownedByThisEmail ? raw : null, email, name);
     S.store.account.email = email || S.store.account.email || '';
+    if (phone) S.store.account.phone = phone;
     if (name) S.store.account.name = name;
     S.store.lastSeenAt = Date.now();
 

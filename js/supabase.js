@@ -1,23 +1,33 @@
 /* ============================================================
    supabase.js — the cloud layer.  window.GfCloud
 
-   Same shape as NutriWeb's NutriCloud: a thin wrapper around
-   supabase-js v2, loaded lazily from a CDN so there is no build
-   step and no bundler.
+   Everyone signs in with a MOBILE NUMBER and a password. There is
+   no email anywhere in the interface.
 
-   It does four things:
-     • auth (email + password, reset, optional phone OTP)
-     • one JSON row per user, whole-store snapshot, debounced
-     • rpc()   — the escape hatch admin.js uses
-     • table() — the escape hatch admin.js uses
+   How that works without an SMS provider
+   ------------------------------------------------------------
+   Supabase's real phone auth needs a paid SMS gateway (Twilio or
+   similar) because it wants to send an OTP. We don't want an OTP —
+   we want a number and a password. So every mobile number is
+   mapped to a synthetic address:
+
+       9873993559   →   9873993559@ariaos.app
+
+   and we use ordinary email+password auth underneath. Nobody ever
+   sees that address; it is an internal key. Turn "Confirm email"
+   OFF in Supabase (there is no inbox to confirm) and phone-number
+   login works on the free tier, instantly, with no SMS bill.
+
+   The number is also stored properly in gf_profiles.phone, so the
+   admin panel searches and displays real numbers.
 
    ⚠️  PUT YOUR OWN PROJECT URL AND ANON KEY BELOW.
-   The anon key is designed to be public — every real permission
-   is enforced by RLS and by SECURITY DEFINER functions in
+   The anon key is designed to be public — every real permission is
+   enforced by RLS and by SECURITY DEFINER functions in
    sql/SCHEMA.sql. NEVER put the service_role key in this file.
 
-   Leave both blank and the whole app runs happily local-only:
-   no login, no gate, no admin, bring your own API key in Settings.
+   Leave both blank and the app runs local-only: no login, no gate,
+   no admin, bring your own key in Settings.
    ============================================================ */
 
 (function () {
@@ -27,6 +37,10 @@
     url: '',        // e.g. https://xxxxxxxxxxxx.supabase.co
     anonKey: '',    // the "anon public" key from Settings → API
   };
+
+  /* The internal domain the synthetic addresses live on. It never needs to
+     exist or receive mail — it is only a unique key for the auth table. */
+  const PHONE_DOMAIN = 'ariaos.app';
 
   const SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
 
@@ -42,14 +56,41 @@
   const currentUser = () => user;
   const raw = () => sb;
 
-  /* Guard every network call so a slow or unreachable backend can never
-     hang the interface. */
-  function withTimeout(promise, ms, fallback) {
-    return Promise.race([
-      promise,
-      new Promise((res) => setTimeout(() => res(fallback), ms)),
-    ]);
+  /* ============================================================
+     Phone helpers
+     ============================================================ */
+
+  /* Strip everything that isn't a digit, then drop an Indian country code
+     so +91 98739 93559, 09873993559 and 9873993559 are all the same person. */
+  function normalisePhone(input) {
+    let d = String(input || '').replace(/\D/g, '');
+    if (d.length > 10 && d.startsWith('91')) d = d.slice(2);
+    if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+    return d;
   }
+
+  function validPhone(input) {
+    const d = normalisePhone(input);
+    return d.length >= 10 && d.length <= 15;
+  }
+
+  const phoneToEmail = (phone) => `${normalisePhone(phone)}@${PHONE_DOMAIN}`;
+
+  /* Turn an internal address back into the number, for display. */
+  function emailToPhone(email) {
+    const e = String(email || '');
+    if (e.endsWith('@' + PHONE_DOMAIN)) return e.slice(0, -(PHONE_DOMAIN.length + 1));
+    return e;
+  }
+
+  function prettyPhone(phone) {
+    const d = normalisePhone(phone);
+    return d.length === 10 ? `${d.slice(0, 5)} ${d.slice(5)}` : d;
+  }
+
+  /* ============================================================
+     Init
+     ============================================================ */
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -67,7 +108,7 @@
     try {
       if (!window.supabase) await loadScript(SDK);
       sb = window.supabase.createClient(GF_SUPABASE.url, GF_SUPABASE.anonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       });
       ready = true;
 
@@ -76,10 +117,6 @@
 
       sb.auth.onAuthStateChange((event, session) => {
         user = session?.user || null;
-        if (event === 'PASSWORD_RECOVERY' && typeof window.GfOnRecovery === 'function') {
-          window.GfOnRecovery();
-          return;
-        }
         if (onAuthChange) onAuthChange(user);
       });
 
@@ -91,46 +128,52 @@
     }
   }
 
-  /* ---------- auth ---------- */
+  /* ============================================================
+     Auth — mobile number + password
+     ============================================================ */
 
-  async function signUpEmail(email, password, name) {
+  function friendlyAuthError(message) {
+    const m = String(message || '');
+    if (/invalid login credentials/i.test(m)) return 'Wrong number or password.';
+    if (/already registered|already been registered|user already/i.test(m)) return 'That number already has an account. Sign in instead.';
+    if (/password should be at least/i.test(m)) return 'Password must be at least 6 characters.';
+    if (/email address .* is invalid/i.test(m)) return 'That does not look like a valid mobile number.';
+    if (/rate limit|too many/i.test(m)) return 'Too many attempts. Wait a minute and try again.';
+    if (/confirm/i.test(m)) return 'Email confirmation is still switched on in Supabase. Turn it off — see SETUP-SUPABASE.md step 6.';
+    return m || 'Something went wrong.';
+  }
+
+  async function signUpPhone(phone, password, name) {
+    if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
+    if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
     const { data, error } = await sb.auth.signUp({
-      email, password, options: { data: { name: name || '' } },
+      email: phoneToEmail(phone),
+      password,
+      options: { data: { name: name || '', phone: normalisePhone(phone) } },
     });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(friendlyAuthError(error.message));
+    // Confirm-email left on → no session comes back. Say so plainly.
+    if (!data.session) {
+      throw new Error('Account made, but Supabase is still asking for email confirmation. Turn "Confirm email" off — see SETUP-SUPABASE.md step 6.');
+    }
     return data;
   }
 
-  async function signInEmail(email, password) {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message);
-    return data;
-  }
-
-  async function sendReset(email) {
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: location.origin + location.pathname,
+  async function signInPhone(phone, password) {
+    if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: phoneToEmail(phone),
+      password,
     });
-    if (error) throw new Error(error.message);
-    return true;
+    if (error) throw new Error(friendlyAuthError(error.message));
+    return data;
   }
 
   async function updatePassword(password) {
+    if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
     const { error } = await sb.auth.updateUser({ password });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(friendlyAuthError(error.message));
     return true;
-  }
-
-  async function sendPhoneOtp(phone) {
-    const { error } = await sb.auth.signInWithOtp({ phone });
-    if (error) throw new Error(error.message);
-    return true;
-  }
-
-  async function verifyPhoneOtp(phone, token) {
-    const { data, error } = await sb.auth.verifyOtp({ phone, token, type: 'sms' });
-    if (error) throw new Error(error.message);
-    return data;
   }
 
   async function signOut() {
@@ -138,7 +181,46 @@
     user = null;
   }
 
-  /* ---------- state sync: one JSON row per user ---------- */
+  /* ------------------------------------------------------------
+     Admin creating an account for somebody else.
+
+     signUp() on the MAIN client would swap the admin's own session
+     for the new user's. So we spin up a second, detached client
+     with persistSession:false — it shares nothing, writes nothing
+     to storage, and is thrown away immediately. The admin stays
+     logged in as the admin throughout.
+
+     This needs no service_role key.
+     ------------------------------------------------------------ */
+  async function createAccountDetached(phone, password, name) {
+    if (!isEnabled()) throw new Error('Cloud not configured');
+    if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
+    if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
+
+    const tmp = window.supabase.createClient(GF_SUPABASE.url, GF_SUPABASE.anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'gf-tmp-' + Math.random().toString(36).slice(2) },
+    });
+
+    const { data, error } = await tmp.auth.signUp({
+      email: phoneToEmail(phone),
+      password,
+      options: { data: { name: name || '', phone: normalisePhone(phone) } },
+    });
+    try { await tmp.auth.signOut(); } catch (_) {}
+
+    if (error) throw new Error(friendlyAuthError(error.message));
+    const id = data?.user?.id;
+    if (!id) throw new Error('Supabase did not return a user id. Check that "Confirm email" is off.');
+    return { id, phone: normalisePhone(phone) };
+  }
+
+  /* ============================================================
+     State sync — one JSON row per user
+     ============================================================ */
+
+  function withTimeout(promise, ms, fallback) {
+    return Promise.race([promise, new Promise((res) => setTimeout(() => res(fallback), ms))]);
+  }
 
   async function pull() {
     if (!isEnabled() || !user) return null;
@@ -183,7 +265,9 @@
     }
   });
 
-  /* ---------- low-level, used by admin.js ---------- */
+  /* ============================================================
+     Low-level, used by admin.js
+     ============================================================ */
 
   async function rpc(fn, args) {
     if (!isEnabled()) throw new Error('Cloud not configured');
@@ -202,10 +286,11 @@
 
   window.GfCloud = {
     init, isEnabled, configured, currentUser, raw,
-    signUpEmail, signInEmail, sendReset, updatePassword,
-    sendPhoneOtp, verifyPhoneOtp, signOut,
+    normalisePhone, validPhone, phoneToEmail, emailToPhone, prettyPhone,
+    signUpPhone, signInPhone, updatePassword, signOut, createAccountDetached,
     pull, push, pushDebounced,
     rpc, table,
     settings: GF_SUPABASE,
+    PHONE_DOMAIN,
   };
 })();

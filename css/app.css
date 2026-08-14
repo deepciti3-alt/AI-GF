@@ -580,6 +580,19 @@ kbd{
 }
 .trialbtn{border:0;border-radius:99px;min-height:34px;padding:0 14px;background:var(--blue);color:#fff;font-size:12.5px;font-weight:600}
 
+/* ---- mobile-number field, with a fixed country prefix ---- */
+.phonefield{display:flex;align-items:stretch;gap:0}
+.phonefield__cc{
+  display:flex;align-items:center;padding:0 12px;
+  border:1px solid var(--hairline);border-right:0;border-radius:14px 0 0 14px;
+  background:var(--sheet);color:var(--ink-2);font-family:var(--f-mono);font-size:14px;
+  flex:0 0 auto;
+}
+.phonefield .input{border-radius:0 14px 14px 0;letter-spacing:.08em;font-size:16px}
+
+/* an admin has one nav item, so let it fill the bar rather than sit in a fifth */
+.bottom-nav--solo{grid-template-columns:1fr !important}
+
 /* ============================================================
    11 · ADMIN  (a* prefix, NutriWeb convention)
    ============================================================ */

@@ -4,8 +4,13 @@
 --  Run this ONCE, whole, in the Supabase SQL editor.
 --  It is idempotent: running it again is safe and changes nothing.
 --
---  BEFORE YOU RUN IT: change the email in gf_admin_emails() below,
---  and change it to the same value in js/admin.js (window.GF_ADMIN).
+--  LOGIN IS BY MOBILE NUMBER. There is no email in the interface.
+--  Internally a number becomes <digits>@ariaos.app so ordinary
+--  email+password auth can carry it — no SMS provider, no OTP,
+--  works on the free tier. See js/supabase.js for the why.
+--
+--  BEFORE YOU RUN IT: set the admin mobile in gf_admin_emails()
+--  below, and set the same number in js/admin.js (window.GF_ADMIN).
 --  The server is authoritative — the JS copy is only a cosmetic
 --  hint so an admin never sees a flash of "access denied".
 --
@@ -24,11 +29,21 @@
 -- 0 · ADMIN IDENTITY
 -- ============================================================
 
+-- Everyone signs in with a mobile number. Internally that number becomes
+-- <digits>@ariaos.app, so the admin list is a list of those addresses.
+-- To make 9812345678 an admin, add '9812345678@ariaos.app' here.
 create or replace function public.gf_admin_emails()
 returns text[] language sql immutable as $$
   select array[
-    'grivaaseo@gmail.com'          -- << CHANGE ME (add more, comma separated)
+    '9873993559@ariaos.app'        -- << admin mobile 9873993559
   ]::text[];
+$$;
+
+-- Convenience: is this MOBILE NUMBER an admin?
+create or replace function public.gf_is_admin_phone(p_phone text)
+returns boolean language sql immutable set search_path = public as $$
+  select lower(regexp_replace(coalesce(p_phone,''), '\D', '', 'g') || '@ariaos.app')
+         = any (public.gf_admin_emails());
 $$;
 
 create or replace function public.gf_is_admin()
@@ -74,7 +89,8 @@ create policy "state delete" on public.gf_state for delete using ( auth.uid() = 
 
 create table if not exists public.gf_profiles (
   user_id       uuid primary key references auth.users(id) on delete cascade,
-  email         text,
+  email         text,                                  -- the internal <digits>@ariaos.app address
+  phone         text,                                  -- the real mobile number, for display and search
   name          text,
   status        text        not null default 'trial',    -- trial | active | blocked
   trial_ends_at timestamptz not null default (now() + interval '7 days'),
@@ -86,6 +102,10 @@ create table if not exists public.gf_profiles (
 );
 
 create index if not exists gf_profiles_status_idx on public.gf_profiles (status);
+create index if not exists gf_profiles_phone_idx  on public.gf_profiles (phone);
+
+-- older installs: add the column without touching anything else
+alter table public.gf_profiles add column if not exists phone text;
 
 alter table public.gf_profiles enable row level security;
 
@@ -115,6 +135,7 @@ begin
     new.coupon_used   := old.coupon_used;
     new.created_at    := old.created_at;
     new.user_id       := old.user_id;
+    new.phone         := old.phone;
   end if;
   return new;
 end $$;
@@ -263,6 +284,7 @@ returns json language plpgsql security definer set search_path = public as $$
 declare
   v_uid   uuid := auth.uid();
   v_email text := auth.jwt() ->> 'email';
+  v_phone text := split_part(coalesce(v_email, ''), '@', 1);
   v_days  int;
   r       public.gf_profiles%rowtype;
 begin
@@ -275,10 +297,11 @@ begin
 
   perform set_config('gf.bypass', '1', true);
 
-  insert into public.gf_profiles (user_id, email, name, trial_ends_at)
-  values (v_uid, v_email, nullif(p_name, ''), now() + (v_days || ' days')::interval)
+  insert into public.gf_profiles (user_id, email, phone, name, trial_ends_at)
+  values (v_uid, v_email, nullif(v_phone, ''), nullif(p_name, ''), now() + (v_days || ' days')::interval)
   on conflict (user_id) do update
     set email        = coalesce(excluded.email, public.gf_profiles.email),
+        phone        = coalesce(public.gf_profiles.phone, excluded.phone),
         name         = coalesce(nullif(p_name, ''), public.gf_profiles.name),
         last_seen_at = now();
 
@@ -286,7 +309,7 @@ begin
 
   return json_build_object(
     'ok', true,
-    'user_id', r.user_id, 'email', r.email, 'name', r.name,
+    'user_id', r.user_id, 'email', r.email, 'phone', r.phone, 'name', r.name,
     'status', r.status, 'trial_ends_at', r.trial_ends_at, 'access_until', r.access_until,
     'created_at', r.created_at, 'coupon_used', r.coupon_used,
     'is_admin',    public.gf_is_admin(),
@@ -478,7 +501,7 @@ begin
 
   select coalesce(json_agg(t order by t.created_at desc), '[]'::json) into v
   from (
-    select p.user_id, p.email, p.name, p.status, p.trial_ends_at, p.access_until,
+    select p.user_id, p.email, p.phone, p.name, p.status, p.trial_ends_at, p.access_until,
            p.coupon_used, p.note, p.created_at, p.last_seen_at,
            public.gf_has_access(p.user_id) as has_access,
            (select count(*) from public.gf_state s where s.user_id = p.user_id) > 0 as has_data
@@ -486,6 +509,69 @@ begin
   ) t;
 
   return json_build_object('ok', true, 'users', v, 'server_time', now());
+end $$;
+
+
+-- ============================================================
+-- 12b · ADMIN: seed a profile for an account the admin just created
+--       The browser cannot create auth users with the anon key, so
+--       admin.js signs the new person up on a detached client and
+--       then calls this to give them a profile and their days.
+--       Without this the profile would not exist until their first
+--       login, and the admin could not grant them anything yet.
+-- ============================================================
+
+create or replace function public.gf_admin_create_profile(
+  p_user  uuid,
+  p_phone text,
+  p_name  text default null,
+  p_days  int  default 0        -- 0 = leave them on the normal trial
+) returns json language plpgsql security definer set search_path = public as $$
+declare
+  v_days int;
+  r      public.gf_profiles%rowtype;
+begin
+  if not public.gf_is_admin() then
+    return json_build_object('ok', false, 'error', 'Admins only.');
+  end if;
+  if p_user is null then
+    return json_build_object('ok', false, 'error', 'No user id given.');
+  end if;
+
+  select trial_days into v_days from public.gf_config where id = 1;
+  v_days := coalesce(v_days, 7);
+
+  perform set_config('gf.bypass', '1', true);
+
+  insert into public.gf_profiles (user_id, email, phone, name, status, trial_ends_at, access_until)
+  values (
+    p_user,
+    regexp_replace(coalesce(p_phone,''), '\D', '', 'g') || '@ariaos.app',
+    regexp_replace(coalesce(p_phone,''), '\D', '', 'g'),
+    nullif(p_name, ''),
+    case when p_days > 0 then 'active' else 'trial' end,
+    now() + (v_days || ' days')::interval,
+    case when p_days > 0 then now() + (p_days || ' days')::interval else null end
+  )
+  on conflict (user_id) do update
+    set phone        = coalesce(excluded.phone, public.gf_profiles.phone),
+        name         = coalesce(excluded.name,  public.gf_profiles.name),
+        status       = excluded.status,
+        access_until = excluded.access_until;
+
+  begin
+    insert into public.gf_admin_log (actor, target, action, days)
+    values (auth.jwt() ->> 'email', p_user, 'create_user', p_days);
+  exception when undefined_table then null;
+  end;
+
+  select * into r from public.gf_profiles where user_id = p_user;
+
+  return json_build_object(
+    'ok', true, 'user_id', r.user_id, 'phone', r.phone,
+    'status', r.status, 'access_until', r.access_until,
+    'has_access', public.gf_has_access(p_user)
+  );
 end $$;
 
 
@@ -501,8 +587,8 @@ begin
     select p.oid::regprocedure as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
-      and p.proname in ('gf_admin_set_access','gf_admin_users','gf_get_config',
-                        'gf_redeem_coupon','gf_bootstrap','gf_has_access')
+      and p.proname in ('gf_admin_set_access','gf_admin_users','gf_admin_create_profile',
+                        'gf_get_config','gf_redeem_coupon','gf_bootstrap','gf_has_access')
   loop
     execute format('revoke all on function %s from anon, public', f.sig);
     execute format('grant execute on function %s to authenticated', f.sig);
@@ -538,7 +624,7 @@ notify pgrst, 'reload schema';
 
 
 -- ============================================================
--- 15 · VERIFY — you should get 9 rows back
+-- 15 · VERIFY — you should get 12 rows back
 -- ============================================================
 
 select proname as installed_function

@@ -29,11 +29,15 @@
   'use strict';
 
   /* ============================================================
-     0 · Config — change the email here AND in gf_admin_emails()
+     0 · Config — set the admin MOBILE here, and the matching
+         <digits>@ariaos.app entry in gf_admin_emails().
+         The server is what actually decides; this is only so the
+         admin never sees a flash of "access denied" while the
+         first request is still in flight.
      ============================================================ */
 
   window.GF_ADMIN = window.GF_ADMIN || {
-    email: 'grivaaseo@gmail.com',
+    phone: '9873993559',
     name: 'Abhishek',
   };
 
@@ -416,6 +420,11 @@
 
     /* ---------- small helpers ---------- */
 
+    /* Profiles written before the phone column existed still only have the
+       internal address, so fall back to decoding that. */
+    const phoneOf = (u) => (u && (u.phone || GfCloud.emailToPhone(u.email))) || '';
+    const showPhone = (u) => GfCloud.prettyPhone(phoneOf(u));
+
     const fmtDate = (s) => {
       if (!s) return '—';
       const d = new Date(s);
@@ -458,8 +467,9 @@
     function isLocalAdmin() {
       try {
         const A = window.GF_ADMIN || {};
-        const email = window.GfStore?.store?.account?.email || '';
-        return !!(A.email && email && email.toLowerCase() === A.email.toLowerCase());
+        const mine = GfCloud.normalisePhone(window.GfStore?.store?.account?.phone || '');
+        const theirs = GfCloud.normalisePhone(A.phone || '');
+        return !!(theirs && mine && mine === theirs);
       } catch (_) { return false; }
     }
 
@@ -505,7 +515,7 @@
       if (/schema cache|does not exist|not found in the schema/i.test(lastError)) {
         hint = 'Run <code>sql/SCHEMA.sql</code> in the Supabase SQL editor, then run <code>notify pgrst, \'reload schema\';</code>';
       } else if (/admins only|permission|policy/i.test(lastError)) {
-        hint = 'The email you are signed in with is not in <code>gf_admin_emails()</code>. Edit that function and re-run it.';
+        hint = 'The number you signed in with is not in <code>gf_admin_emails()</code>. It must be listed there as <code>&lt;digits&gt;@ariaos.app</code>.';
       } else if (/timeout|network|fetch/i.test(lastError)) {
         hint = 'The project may be paused (Supabase free tier pauses after 7 idle days). Open the dashboard to wake it.';
       }
@@ -567,18 +577,18 @@
         .map(([l, v, i]) => `<div class="astat"><div class="ai">${i}</div><div class="at">
           <div class="al">${l}</div><div class="av">${v}</div></div></div>`).join('');
 
-      const needle = q.trim().toLowerCase();
-      const shown = !needle ? users : users.filter((u) =>
-        `${u.email || ''} ${u.name || ''} ${u.coupon_used || ''}`.toLowerCase().includes(needle));
+      const needle = GfCloud.normalisePhone(q) || q.trim().toLowerCase();
+      const shown = !q.trim() ? users : users.filter((u) =>
+        `${phoneOf(u)} ${u.name || ''} ${u.coupon_used || ''}`.toLowerCase().includes(needle));
 
       const rows = shown.map((u) => {
         const st = userState(u);
-        const initial = esc((u.name || u.email || '?').trim().charAt(0).toUpperCase());
+        const initial = esc((u.name || phoneOf(u) || '?').trim().charAt(0).toUpperCase());
         return `<div class="urow">
           <div class="uav">${initial}</div>
           <div class="grow">
-            <div class="uname">${esc(u.name || '—')}</div>
-            <div class="umail">${esc(u.email || '')}</div>
+            <div class="uname">${esc(showPhone(u))}</div>
+            <div class="umail">${esc(u.name || 'no name given')}</div>
             <div class="ubadges">
               <span class="abadge ${st.cls}">${esc(st.label)}</span>
               ${u.coupon_used ? `<span class="abadge good">🎟️ ${esc(u.coupon_used)}</span>` : ''}
@@ -588,13 +598,20 @@
           </div>
           <button class="btn btn--small btn--soft" data-manage="${esc(u.user_id)}">Manage</button>
         </div>`;
-      }).join('') || '<div class="empty">Nobody matches that search.</div>';
+      }).join('') || (q.trim()
+        ? '<div class="empty">Nobody matches that search.</div>'
+        : `<div class="empty"><strong>No users yet</strong>
+             Tap <b>Add user</b> to make someone an account, or send them the link and
+             they can sign themselves up with a mobile number.</div>`);
 
       body.innerHTML = `
         <div class="astats">${stats}</div>
         <div class="card card--flat">
-          <div class="field" style="margin-bottom:14px">
-            <input class="input" id="ad-q" placeholder="Search name, email or coupon…" value="${esc(q)}">
+          <div class="row row--between" style="margin-bottom:12px;gap:10px">
+            <div class="field grow" style="margin:0;min-width:200px">
+              <input class="input" id="ad-q" placeholder="Search mobile, name or coupon…" value="${esc(q)}">
+            </div>
+            <button class="btn btn--hot" id="ad-new">＋ Add user</button>
           </div>
           ${rows}
         </div>`;
@@ -611,6 +628,126 @@
         }, 200);
       };
       $$('[data-manage]').forEach((b) => { b.onclick = () => manageUser(b.dataset.manage); });
+      document.getElementById('ad-new').onclick = newUser;
+    }
+
+    /* ---------- generating an account for somebody ----------
+       The anon key cannot create auth users on the main client without
+       swapping the admin's own session for the new one. So supabase.js
+       does the signup on a throwaway client, and we then seed the
+       profile through an admin-only RPC. No service_role anywhere. */
+
+    function newUser() {
+      GfUI.modal('Add a user', `
+        <p class="muted">They sign in with this number and password. Give them the two
+          and they are in — no email, no confirmation, nothing to click.</p>
+        <form id="newUserForm" style="margin-top:16px">
+          <div class="grid2">
+            <div class="field">
+              <label for="nu-phone">Mobile number</label>
+              <input class="input mono" id="nu-phone" name="phone" inputmode="numeric"
+                     placeholder="9812345678" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="nu-name">Name (optional)</label>
+              <input class="input" id="nu-name" name="name" placeholder="what she should call him">
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label for="nu-pass">Password</label>
+              <input class="input mono" id="nu-pass" name="password" value="${randomPass()}" minlength="6" required>
+              <span class="hint">At least 6 characters. Write it down — you are the only one who sees it.</span>
+            </div>
+            <div class="field">
+              <label for="nu-days">Give them</label>
+              <select class="select" id="nu-days" name="days">
+                <option value="0">the normal free trial</option>
+                <option value="7">7 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="90">90 days</option>
+                <option value="365">1 year</option>
+                <option value="-1">Lifetime</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn--hot btn--wide" type="submit" id="nu-go">Create the account</button>
+          <p class="gate-msg" id="nu-msg"></p>
+        </form>`);
+
+      setTimeout(() => {
+        const form = document.getElementById('newUserForm');
+        if (!form) return;
+        document.getElementById('nu-phone')?.focus();
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const msg = document.getElementById('nu-msg');
+          const go = document.getElementById('nu-go');
+          const fd = new FormData(form);
+          const phone = String(fd.get('phone') || '');
+          const pass = String(fd.get('password') || '');
+          const nm = String(fd.get('name') || '').trim();
+          const days = parseInt(fd.get('days'), 10) || 0;
+
+          go.disabled = true; go.textContent = 'Creating…';
+          msg.textContent = '';
+          try {
+            const made = await GfCloud.createAccountDetached(phone, pass, nm);
+            const r = await GfCloud.rpc('gf_admin_create_profile', {
+              p_user: made.id,
+              p_phone: made.phone,
+              p_name: nm || null,
+              p_days: days,
+            });
+            if (!r || !r.ok) throw new Error((r && r.error) || 'Profile could not be created.');
+
+            if (days === -1) {
+              await GfCloud.rpc('gf_admin_set_access', { p_user: made.id, p_action: 'unlimited', p_days: 0 });
+            }
+
+            await loadUsers();
+            GfUI.closeOverlay();
+            drawUsers();
+            showCredentials(made.phone, pass);
+          } catch (err) {
+            msg.textContent = err.message;
+            go.disabled = false; go.textContent = 'Create the account';
+          }
+        };
+      }, 30);
+    }
+
+    function randomPass() {
+      const n = Math.floor(100000 + Math.random() * 900000);
+      return String(n);
+    }
+
+    /* Show it once, big, with a copy button — this is the only time
+       anyone sees the password in plain text. */
+    function showCredentials(phone, pass) {
+      const line = `Mobile: ${GfCloud.prettyPhone(phone)}\nPassword: ${pass}`;
+      GfUI.modal('Account created ✅', `
+        <p class="muted">Send these two to them. This is the only time the password is shown.</p>
+        <div class="krow is-primary" style="margin-top:14px">
+          <div class="grow">
+            <div class="krow__p">Mobile</div>
+            <div class="krow__k" style="font-size:16px">${esc(GfCloud.prettyPhone(phone))}</div>
+          </div>
+        </div>
+        <div class="krow is-primary">
+          <div class="grow">
+            <div class="krow__p">Password</div>
+            <div class="krow__k" style="font-size:16px">${esc(pass)}</div>
+          </div>
+        </div>
+        <button class="btn btn--wide" id="cred-copy" style="margin-top:14px">⧉ Copy both</button>`);
+      setTimeout(() => {
+        const b = document.getElementById('cred-copy');
+        if (b) b.onclick = async () => {
+          try { await navigator.clipboard.writeText(line); toast('Copied'); }
+          catch (_) { toast('Could not copy — write it down'); }
+        };
+      }, 30);
     }
 
     function manageUser(id) {
@@ -618,8 +755,8 @@
       if (!u) return;
       const st = userState(u);
 
-      GfUI.modal(esc(u.name || u.email || 'User'), `
-        <p class="muted" style="margin-bottom:4px">${esc(u.email || '')}</p>
+      GfUI.modal(showPhone(u) || 'User', `
+        <p class="muted" style="margin-bottom:4px">${esc(u.name || 'no name given')}</p>
         <div class="ubadges" style="margin-bottom:16px">
           <span class="abadge ${st.cls}">${esc(st.label)}</span>
           <span class="tag">${esc(u.status)}</span>
@@ -1160,7 +1297,7 @@
         <div class="card card--flat" style="margin-top:18px">
           <h2>Health</h2>
           <div class="prow"><span class="pl">Supabase project</span><span class="pv mono">${esc((GfCloud.settings.url || '').replace(/^https?:\/\//, '') || 'not set')}</span></div>
-          <div class="prow"><span class="pl">Admin email</span><span class="pv mono">${esc(window.GF_ADMIN.email)}</span></div>
+          <div class="prow"><span class="pl">Admin mobile</span><span class="pv mono">${esc(GfCloud.prettyPhone(window.GF_ADMIN.phone))}</span></div>
           <div class="prow"><span class="pl">Keys loaded</span><span class="pv">${parseKeyList(c).length}</span></div>
           <div class="prow"><span class="pl">Users</span><span class="pv">${users.length}</span></div>
           <div class="prow"><span class="pl">Config updated</span><span class="pv">${timeAgo(c.updated_at)}</span></div>

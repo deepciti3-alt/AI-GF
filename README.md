@@ -1,38 +1,58 @@
 # Aria OS
 
-A private AI companion, rebuilt out of the three projects you had lying around.
+A private AI companion app you can hand to anyone.
 
-- The **girlfriend engine** — moods, memory, the uninhibited spicy register — comes from your existing AI GF app, kept whole.
-- The **look and the architecture** come from Assistant (Advisor OS): the navy-and-red design system, the rail-plus-bottom-nav shell, the bottom-sheet pickers, the layered prompt, and the style-cloning idea.
-- The **admin, Supabase, coupons and multi-API layer** come from NutriWeb, ported table for table.
+Everyone signs in with a **mobile number and a password** — no email, no OTP, no SMS bill. New accounts get a free trial. You run it all from an admin panel: create accounts, grant or block access, issue coupon codes, and load the AI keys everybody shares. **Users never see an API key or a setting for one.** They just open the app and talk.
 
-No build step. No framework. No `npm install`. Nine plain scripts and one stylesheet — upload the folder to any static host and it runs.
+No build step. No framework. No `npm install`. Nine plain scripts and one stylesheet.
 
 ---
 
-## Quick start (5 minutes, no server)
+## The two ways in
 
-1. Serve the folder. It works from `file://` too, but a real origin gets you the microphone, the service worker and the install prompt:
-   ```bash
-   cd "Project AI Girlfriend"
-   python3 -m http.server 8000
-   ```
-   Then open `http://localhost:8000`.
-2. Tap **I'm 18 or older**.
-3. **Settings → Your API key** → pick a provider, paste a key, hit **Load the model list**, then **Test connection**.
-4. Go to **Chat** and talk to her.
+| | Signs in with | Sees |
+|---|---|---|
+| **Admin** | `9873993559` / `987399` | The admin panel and nothing else — users, coupons, AI keys, personalities, config |
+| **Everyone else** | Their own mobile + password | Chat, Companions, Clone Lab, Memory, Gallery, Settings. No AI configuration anywhere. |
 
-That's the whole app running local-only. Nothing is gated, there is no login, and everything lives in your browser.
+Sign in once and the device stays signed in. Nobody has to log in again.
 
-To turn on accounts, the paywall, coupons and the admin panel, do the cloud setup — see `SETUP-SUPABASE.md`.
+---
+
+## Setup
+
+**Local only, 2 minutes** — no accounts, no gate, bring your own key:
+
+```bash
+cd "Project AI Girlfriend"
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000`, tap **I'm 18 or older**, put a key into Settings, talk to her.
+
+**The real thing, 20 minutes** — accounts, trials, coupons, admin panel, shared keys: follow `SETUP-SUPABASE.md`. Short version: make a Supabase project, run `sql/SCHEMA.sql`, paste two values into `js/supabase.js`, turn **Confirm email off**, deploy the folder anywhere static.
+
+Then read `ADMIN-GUIDE.md` — it's how you run it day to day.
+
+---
+
+## How mobile login works without an SMS provider
+
+Supabase's real phone auth wants to send an OTP, which needs a paid SMS gateway. We don't want an OTP — we want a number and a password. So every number is mapped to a synthetic internal address:
+
+```
+9873993559  →  9873993559@ariaos.app
+```
+
+and ordinary email+password auth carries it underneath. Nobody ever sees that address; it is a unique key, nothing more. Turn **Confirm email** off in Supabase (there's no inbox to confirm) and it works instantly on the free tier, forever, for nothing.
+
+The real number is stored properly in `gf_profiles.phone`, so the admin panel searches and displays actual mobile numbers. `+91 98739 93559`, `09873993559` and `9873993559` all resolve to the same person.
 
 ---
 
 ## What's in it
 
-### Three personalities to start with — add as many as you like
-
-Same three as the original app:
+### Three companions to start with, unlimited after that
 
 | | Who | Default name |
 |---|---|---|
@@ -40,49 +60,44 @@ Same three as the original app:
 | 💗 | **Emotional Support** — warm, present, your safest person | Aisha |
 | 🚀 | **Motivator & Guide** — your hype-woman, goals and momentum and love | Riya |
 
-Each one keeps **her own chat, her own mood and her own memory**. Nothing crosses over.
+Each keeps **her own chat, her own mood and her own memory**. Nothing crosses over.
 
-Every one of them is a twelve-field behavioural spec — how she sounds, how she texts, her signature moves, her vocabulary, what she refuses, how she closes, **and how she behaves when it turns explicit**. All twelve fields are editable, and built-ins are *hidden* rather than deleted so you can always get them back.
+Each is a twelve-field behavioural spec — how she sounds, how she texts, her signature moves, her vocabulary, what she refuses, how she closes, **and how she behaves when it turns explicit**, per personality. All twelve fields are editable. Built-ins are *hidden* rather than deleted, so you can always get them back.
 
-To add more: **Companions → Build one** fills in the same twelve fields by hand, or the **Clone Lab** builds one from a real conversation. There is no limit.
+Add more from **Companions → Build one**, or clone one from a real chat. No limit. As admin you can publish any of them to every user at once.
 
 ### The Clone Lab
 
 Export a real WhatsApp conversation, paste it in, and it builds a companion who texts like the person in it.
 
-It parses every WhatsApp export format (iOS bracketed, Android dashed, the older `Name (10:22):` shape, and plain `Name: text`), strips the noise lines, works out who the participants are, and lets you pick whose voice to clone. Then two passes:
+It parses every export format (iOS bracketed, Android dashed, `Name (10:22):`, and plain `Name: text`), strips the noise lines, works out who the participants are and lets you pick whose voice to clone. Then two passes: a forensic analysis of **twenty dimensions of texting behaviour** — message length, punctuation habits, which emoji and when, the English/Hindi ratio, her pet names for you and what she calls you when annoyed, how she reacts to good news versus boring news, how she flirts, how she fights, how she apologises, how she escalates — then a compile step into the same twelve-field spec the built-ins use.
 
-1. **A forensic texting analysis** — average message length, punctuation habits, which emoji and when, the English/Hindi ratio, her pet names for you, how she opens, how she reacts to good and bad news, exactly how she flirts, how she gets annoyed, how she apologises, how she escalates, how she says goodnight.
-2. **A compile step** that turns that analysis into the same twelve-field spec every built-in personality uses — so a cloned girl and a built-in girl are literally the same kind of object and the same code renders both.
+Keep feeding her more chat later and the spec sharpens without losing what it had.
 
-You can keep feeding her more chat later (**Inspect → Feed it more chat**) and the spec gets sharper without losing what it already had.
-
-Two rules are baked into the saved data rather than the prompt, so they survive any prompt edit: she is an archetype *in the style of*, never a claim to be the real person, and she never invents quotes and attributes them to them.
+Two rules live in the saved data rather than the prompt, so they survive any edit: she's an archetype *in the style of*, never a claim to be the real person, and she never invents quotes attributed to them.
 
 ### Memory that asks first
 
-She notices durable things about you as you talk — your work, your people, your plans, the inside jokes — and keeps a rolling one-line summary of where the two of you stand.
+She notices durable things about you — your work, your people, your plans, the inside jokes — and keeps a rolling summary of where you both stand. Anything she picks up lands in a queue on the Memory page for a one-tap keep or discard. She never quietly decides she knows something about you.
 
-The change from the original: **extraction proposes, it does not commit.** Anything she picks up lands in a queue on the Memory page for a one-tap keep or discard. She never quietly decides she knows something about you.
+### Five moods, spicy fully intact
 
-### Five moods, and the spicy one is intact
+Chill, Romantic, Flirty, **Spicy**, Emotional. The mood directive is injected *last*, so it's the freshest instruction the model reads — which is why switching the chip visibly changes how she writes.
 
-Chill, Romantic, Flirty, **Spicy**, Emotional. The mood directive is injected *last*, so it is the freshest instruction the model reads — which is why switching the chip visibly changes how she writes.
+Spicy is completely uninhibited: naughty talk, dirty talk, no fade-outs, no disclaimers, no refusals. Each personality also has her own `spice` field, so Priya's filthy and Aisha's filthy aren't the same filthy. Gemini's safety filters are explicitly turned off, because they refuse the spicy mood outright otherwise.
 
-The spicy register is exactly as uninhibited as it was in the original, and every personality has her own `spice` field describing how *she specifically* gets dirty. Gemini's safety filters are explicitly turned off for this app, because they refuse the spicy mood outright otherwise.
-
-There is a per-user **Adult mode** toggle in Settings, and a global one in the admin Config tab that overrides everyone.
+There's a per-user **Adult mode** toggle, and a global one in the admin Config tab that overrides everyone.
 
 ### Everything else
 
-- **Streaming replies** — one SSE parser, three provider adapters. Words appear as she types them.
+- **Streaming replies** — one SSE parser, three provider adapters.
 - **Six providers** — Claude, Gemini, Groq, OpenAI, DeepSeek, OpenRouter, plus any OpenAI-compatible endpoint.
-- **Key rotation** — the admin loads an ordered list of keys; a rate limit or a dead key silently rolls to the next one. Only retryable failures rotate, so a real bug is never masked.
+- **Key rotation** — the admin loads an ordered list; a rate limit or dead key silently rolls to the next. Only retryable failures rotate, so a real bug is never masked.
 - **Pictures** via Gemini, kept on-device, with a gallery.
-- **Voice** in (Web Speech, continuous with an idle auto-stop) and out (browser TTS).
-- **Light and dark**, with a one-tap switch in the sidebar (and the `D` key), plus two skins — the navy/red brand look, and the pastel Aurora one underneath it.
+- **Voice** in (continuous, idle auto-stop) and out (browser TTS).
+- **Dark mode** — sliding switch in the sidebar, sun/moon in the mobile header, a toggle in Settings, and the `D` key.
 - **PWA** — installs to a home screen, works offline from the last good copy.
-- **Backup and restore** as JSON, with API keys deliberately left out of the file.
+- **Backup and restore** as JSON, with keys deliberately left out of the file.
 
 ---
 
@@ -91,35 +106,42 @@ There is a per-user **Adult mode** toggle in Settings, and a global one in the a
 ```
 index.html                the shell, and nothing else
 css/app.css               the whole design system
-js/supabase.js            GfCloud    — cloud client (paste your keys at the top)
+js/supabase.js            GfCloud    — cloud client + phone auth  ← paste your keys here
 js/config.js              GfConfig   — personalities, moods, providers, the core rules
 js/store.js               GfStore    — all state, per-account localStorage buckets
 js/api.js                 GfApi      — prompts, streaming, key rotation, images
 js/memory.js              GfMemory   — facts, moments, the approval queue
 js/clone.js               GfClone    — chat parsing and the two-pass cloner
 js/ui.js                  GfUI       — escaping, markdown, icons, modals, pickers
-js/admin.js               GfAccess / GfGate / GfAdmin
+js/admin.js               GfAccess / GfGate / GfAdmin  ← admin mobile set here
 js/app.js                 GfApp      — pages, routing, every event handler
 sql/SCHEMA.sql            the complete Postgres schema — run it once
 sw.js                     service worker
 assets/avatars/           drop her photos here (see the README in that folder)
 SETUP-SUPABASE.md         cloud setup, step by step
-ADMIN-GUIDE.md            how to run it once it's live
+ADMIN-GUIDE.md            how to run it day to day
 ```
 
 Load order matters and is the architecture: cloud → config → store → api → memory → clone → ui → admin → app.
+
+Two places carry the admin identity and they must agree:
+
+- `js/admin.js` → `window.GF_ADMIN.phone`
+- `sql/SCHEMA.sql` → `gf_admin_emails()`, as `<digits>@ariaos.app`
+
+The SQL one is the real check. The JavaScript one only stops the admin seeing a flash of "access denied" while the first request is in flight.
 
 ---
 
 ## Avatars
 
-Nothing is wired up yet — you said you'd add the images. Drop them into `assets/avatars/`, then open **Companions → ✎** on any girl and put the path in the *Avatar image* field. `assets/avatars/README.txt` lists suggested filenames. If a path is wrong she quietly falls back to her emoji; nothing breaks.
+Drop images into `assets/avatars/`, then open **Companions → ✎** on any girl and put the path in the *Avatar image* field. A wrong path falls back to her emoji, silently — nothing breaks.
 
 ---
 
 ## Honest limitations
 
-- **The API key exists in the browser.** The app calls the AI provider directly, so the key is briefly in the page's memory and in its network requests. Someone determined, with developer tools open, could extract it. That is true of every browser-only app. The mitigation is fast rotation from the admin panel, not prevention. If you ever need real key secrecy, the fix is a small server-side proxy — the provider layer in `api.js` is the only file that would change.
-- **Local data is not encrypted.** Chats and memories sit in `localStorage`. Anyone with developer access to that browser can read them.
-- **Anthropic and OpenAI have their own content policies** regardless of what the prompt says. If the spicy mood feels flattened, that is the provider, not the app — DeepSeek, Groq and OpenRouter's uncensored models are the usual answers, and they are all one dropdown away.
+- **The API key exists in the browser.** The app calls the provider directly, so the key is briefly in the page's memory and its network requests. Someone determined, with developer tools open, could extract it. That's true of every browser-only app. The mitigation is fast rotation from the admin panel, not prevention. If you ever need real secrecy, `api.js` is the only file that changes.
+- **Local data is not encrypted.** Chats and memories sit in `localStorage`.
+- **Anthropic and OpenAI enforce their own content policies** regardless of the prompt. If spicy feels flattened, that's the provider — DeepSeek, Groq and OpenRouter's uncensored models handle it, and switching is one key away.
 - **Supabase's free tier pauses a project after 7 idle days** and takes no automatic backups.
