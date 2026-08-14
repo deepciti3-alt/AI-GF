@@ -162,8 +162,11 @@
     return m || 'Something went wrong.';
   }
 
+  const serverDown = () => new Error("Can't reach the server right now. Check your internet and try again in a moment. (If it stays down, the Supabase project may be paused — open its dashboard to wake it.)");
+
   async function signUpPhone(phone, password, name) {
     if (useLocal()) return local().signUpPhone(phone, password, name);
+    if (!isEnabled()) throw serverDown();
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
     const { data, error } = await sb.auth.signUp({
@@ -180,6 +183,7 @@
 
   async function signInPhone(phone, password) {
     if (useLocal()) return local().signInPhone(phone, password);
+    if (!isEnabled()) throw serverDown();
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     const { data, error } = await sb.auth.signInWithPassword({
       email: phoneToEmail(phone),
@@ -191,6 +195,7 @@
 
   async function updatePassword(password) {
     if (useLocal()) return local().updatePassword(password);
+    if (!isEnabled()) throw serverDown();
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
     const { error } = await sb.auth.updateUser({ password });
     if (error) throw new Error(friendlyAuthError(error.message));

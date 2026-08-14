@@ -1295,6 +1295,13 @@
           <p class="gate-msg" id="cfg-msg"></p>
         </div>
 
+        <div class="card" style="margin-top:18px">
+          <h2>Security</h2>
+          <p class="muted">The admin password ships as a default that's visible in the code. Change it
+            so only you can reach this panel. You can also change it any time from here.</p>
+          <button class="btn btn--hot" data-action="change-password" style="margin-top:10px">Change admin password</button>
+        </div>
+
         <div class="card card--flat" style="margin-top:18px">
           <h2>Health</h2>
           <div class="prow"><span class="pl">Backend</span><span class="pv mono">${
