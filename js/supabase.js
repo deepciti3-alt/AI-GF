@@ -4,44 +4,52 @@
    Everyone signs in with a MOBILE NUMBER and a password. There is
    no email anywhere in the interface.
 
-   How that works without an SMS provider
+   TWO BACKENDS, ONE INTERFACE
    ------------------------------------------------------------
-   Supabase's real phone auth needs a paid SMS gateway (Twilio or
-   similar) because it wants to send an OTP. We don't want an OTP —
-   we want a number and a password. So every mobile number is
-   mapped to a synthetic address:
+   • Fill in the Supabase URL + anon key below and GfCloud talks to
+     your real Supabase project — many users, many devices, proper
+     server-side security (see sql/SCHEMA.sql).
 
-       9873993559   →   9873993559@ariaos.app
+   • Leave them BLANK and GfCloud automatically routes to GfLocal
+     (js/local.js), a self-contained backend that lives entirely in
+     this browser. You still get a real login screen, the admin
+     panel, coupons and the shared multi-API key list — with zero
+     setup, working on any static host. This is what makes the app
+     usable the moment you open it, instead of falling into a
+     login-less local-only mode.
+
+     Admin signs in with the number + password in window.GF_ADMIN
+     (js/local.js / js/admin.js). Everyone else signs up with their
+     own number.
+
+   How mobile login works on real Supabase without an SMS provider
+   ------------------------------------------------------------
+   Supabase's real phone auth needs a paid SMS gateway because it
+   wants to send an OTP. We don't want an OTP — we want a number and
+   a password. So every mobile number is mapped to a synthetic
+   address:
+
+       9873393559   →   9873393559@ariaos.app
 
    and we use ordinary email+password auth underneath. Nobody ever
-   sees that address; it is an internal key. Turn "Confirm email"
-   OFF in Supabase (there is no inbox to confirm) and phone-number
-   login works on the free tier, instantly, with no SMS bill.
+   sees that address. Turn "Confirm email" OFF in Supabase and
+   phone-number login works on the free tier, instantly.
 
-   The number is also stored properly in gf_profiles.phone, so the
-   admin panel searches and displays real numbers.
-
-   ⚠️  PUT YOUR OWN PROJECT URL AND ANON KEY BELOW.
+   ⚠️  PUT YOUR OWN PROJECT URL AND ANON KEY BELOW to go multi-device.
    The anon key is designed to be public — every real permission is
-   enforced by RLS and by SECURITY DEFINER functions in
-   sql/SCHEMA.sql. NEVER put the service_role key in this file.
-
-   Leave both blank and the app runs local-only: no login, no gate,
-   no admin, bring your own key in Settings.
+   enforced by RLS and SECURITY DEFINER functions in sql/SCHEMA.sql.
+   NEVER put the service_role key in this file.
    ============================================================ */
 
 (function () {
   'use strict';
 
   const GF_SUPABASE = {
-    url: '',        // e.g. https://xxxxxxxxxxxx.supabase.co
-    anonKey: '',    // the "anon public" key from Settings → API
+    url: 'https://ldsoargzklmdwppauoje.supabase.co',        // e.g. https://xxxxxxxxxxxx.supabase.co
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxkc29hcmd6a2xtZHdwcGF1b2plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MDYyMTIsImV4cCI6MjEwMjI4MjIxMn0.oKO_lvCyKsWqwepzb964WyzTK4X4hA2ebBv2udwX2Tk',    // the "anon public" key from Settings → API
   };
 
-  /* The internal domain the synthetic addresses live on. It never needs to
-     exist or receive mail — it is only a unique key for the auth table. */
   const PHONE_DOMAIN = 'ariaos.app';
-
   const SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
 
   let sb = null;
@@ -51,38 +59,41 @@
   let pushT = null;
   let pendingStore = null;
 
-  const configured = () => !!(GF_SUPABASE.url && GF_SUPABASE.anonKey);
-  const isEnabled = () => ready && !!sb;
-  const currentUser = () => user;
+  /* Which backend are we on? Real Supabase when both keys are present;
+     otherwise the in-browser GfLocal backend. */
+  const hasRealCloud = () => !!(GF_SUPABASE.url && GF_SUPABASE.anonKey);
+  const local = () => window.GfLocal || null;
+  const useLocal = () => !hasRealCloud() && !!local();
+
+  /* configured() is true whenever a backend exists at all — real or local.
+     This is what turns the login screen, the gate and the admin panel on.
+     It only returns false in the legacy "no local.js, no keys" case, which
+     keeps the old bring-your-own-key-in-Settings behaviour available. */
+  const configured = () => hasRealCloud() || !!local();
+  const isEnabled = () => useLocal() ? true : (ready && !!sb);
+  const currentUser = () => useLocal() ? local().currentUser() : user;
   const raw = () => sb;
 
   /* ============================================================
-     Phone helpers
+     Phone helpers — pure, shared by both backends
      ============================================================ */
 
-  /* Strip everything that isn't a digit, then drop an Indian country code
-     so +91 98739 93559, 09873993559 and 9873993559 are all the same person. */
   function normalisePhone(input) {
     let d = String(input || '').replace(/\D/g, '');
     if (d.length > 10 && d.startsWith('91')) d = d.slice(2);
     if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
     return d;
   }
-
   function validPhone(input) {
     const d = normalisePhone(input);
     return d.length >= 10 && d.length <= 15;
   }
-
   const phoneToEmail = (phone) => `${normalisePhone(phone)}@${PHONE_DOMAIN}`;
-
-  /* Turn an internal address back into the number, for display. */
   function emailToPhone(email) {
     const e = String(email || '');
     if (e.endsWith('@' + PHONE_DOMAIN)) return e.slice(0, -(PHONE_DOMAIN.length + 1));
     return e;
   }
-
   function prettyPhone(phone) {
     const d = normalisePhone(phone);
     return d.length === 10 ? `${d.slice(0, 5)} ${d.slice(5)}` : d;
@@ -104,7 +115,15 @@
 
   async function init(authCb) {
     onAuthChange = authCb || null;
-    if (!configured()) return { enabled: false };
+
+    // No real keys → run entirely in the browser via GfLocal.
+    if (useLocal()) {
+      const r = local().init(authCb);
+      return { enabled: true, user: r.user };
+    }
+
+    if (!hasRealCloud()) return { enabled: false };   // no local.js either — legacy path
+
     try {
       if (!window.supabase) await loadScript(SDK);
       sb = window.supabase.createClient(GF_SUPABASE.url, GF_SUPABASE.anonKey, {
@@ -143,7 +162,11 @@
     return m || 'Something went wrong.';
   }
 
+  const serverDown = () => new Error("Can't reach the server right now. Check your internet and try again in a moment. (If it stays down, the Supabase project may be paused — open its dashboard to wake it.)");
+
   async function signUpPhone(phone, password, name) {
+    if (useLocal()) return local().signUpPhone(phone, password, name);
+    if (!isEnabled()) throw serverDown();
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
     const { data, error } = await sb.auth.signUp({
@@ -152,7 +175,6 @@
       options: { data: { name: name || '', phone: normalisePhone(phone) } },
     });
     if (error) throw new Error(friendlyAuthError(error.message));
-    // Confirm-email left on → no session comes back. Say so plainly.
     if (!data.session) {
       throw new Error('Account made, but Supabase is still asking for email confirmation. Turn "Confirm email" off — see SETUP-SUPABASE.md step 6.');
     }
@@ -160,6 +182,8 @@
   }
 
   async function signInPhone(phone, password) {
+    if (useLocal()) return local().signInPhone(phone, password);
+    if (!isEnabled()) throw serverDown();
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     const { data, error } = await sb.auth.signInWithPassword({
       email: phoneToEmail(phone),
@@ -170,6 +194,8 @@
   }
 
   async function updatePassword(password) {
+    if (useLocal()) return local().updatePassword(password);
+    if (!isEnabled()) throw serverDown();
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
     const { error } = await sb.auth.updateUser({ password });
     if (error) throw new Error(friendlyAuthError(error.message));
@@ -177,22 +203,13 @@
   }
 
   async function signOut() {
+    if (useLocal()) { await local().signOut(); return; }
     try { await sb.auth.signOut(); } catch (_) {}
     user = null;
   }
 
-  /* ------------------------------------------------------------
-     Admin creating an account for somebody else.
-
-     signUp() on the MAIN client would swap the admin's own session
-     for the new user's. So we spin up a second, detached client
-     with persistSession:false — it shares nothing, writes nothing
-     to storage, and is thrown away immediately. The admin stays
-     logged in as the admin throughout.
-
-     This needs no service_role key.
-     ------------------------------------------------------------ */
   async function createAccountDetached(phone, password, name) {
+    if (useLocal()) return local().createAccountDetached(phone, password, name);
     if (!isEnabled()) throw new Error('Cloud not configured');
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
@@ -223,6 +240,7 @@
   }
 
   async function pull() {
+    if (useLocal()) return local().pull();
     if (!isEnabled() || !user) return null;
     const q = sb.from('gf_state').select('data, updated_at').eq('user_id', user.id).maybeSingle();
     const { data, error } = await withTimeout(q, 10000, { data: null, error: { message: 'timeout' } });
@@ -231,9 +249,9 @@
   }
 
   async function push(storeObj) {
+    if (useLocal()) return local().push(storeObj);
     if (!isEnabled() || !user || !storeObj) return false;
     const clean = JSON.parse(JSON.stringify(storeObj));
-    // an API key must never travel inside a user's snapshot
     if (clean.settings) {
       clean.settings.apiKey = '';
       clean.settings.apiKeys = {};
@@ -250,15 +268,15 @@
   }
 
   function pushDebounced(storeObj) {
+    if (useLocal()) { local().pushDebounced(storeObj); return; }
     if (!isEnabled() || !user) return;
     pendingStore = storeObj;
     clearTimeout(pushT);
     pushT = setTimeout(() => { const s = pendingStore; pendingStore = null; push(s); }, 1500);
   }
 
-  // flush on tab hide so a debounced write is never lost
   window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && pendingStore && isEnabled() && user) {
+    if (document.visibilityState === 'hidden' && pendingStore && !useLocal() && isEnabled() && user) {
       clearTimeout(pushT);
       const s = pendingStore; pendingStore = null;
       push(s);
@@ -270,6 +288,7 @@
      ============================================================ */
 
   async function rpc(fn, args) {
+    if (useLocal()) return local().rpc(fn, args || {});
     if (!isEnabled()) throw new Error('Cloud not configured');
     const { data, error } = await withTimeout(
       sb.rpc(fn, args || {}), 15000,
@@ -280,6 +299,7 @@
   }
 
   function table(name) {
+    if (useLocal()) return local().table(name);
     if (!isEnabled()) throw new Error('Cloud not configured');
     return sb.from(name);
   }
@@ -292,5 +312,7 @@
     rpc, table,
     settings: GF_SUPABASE,
     PHONE_DOMAIN,
+    /* true when running on the built-in in-browser backend (no Supabase) */
+    isLocalMode: () => useLocal(),
   };
 })();

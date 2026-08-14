@@ -749,14 +749,19 @@
 
           <div class="field">
             <label for="auPass">Password</label>
-            <input class="input" id="auPass" name="password" type="password" required minlength="6"
-                   autocomplete="${up ? 'new-password' : 'current-password'}"
-                   placeholder="${up ? 'at least 6 characters' : ''}">
+            <div style="position:relative">
+              <input class="input" id="auPass" name="password" type="password" required minlength="6"
+                     autocomplete="${up ? 'new-password' : 'current-password'}"
+                     placeholder="${up ? 'at least 6 characters' : ''}" style="padding-right:46px">
+              <button type="button" class="iconbtn" data-action="toggle-pass" aria-label="Show or hide password"
+                      style="position:absolute;right:6px;top:50%;transform:translateY(-50%)">${ICONS.eye || '👁'}</button>
+            </div>
           </div>
 
           <button class="btn btn--hot btn--wide" type="submit" id="authGo">
             ${up ? 'Create my account' : 'Sign in'}
           </button>
+          ${up ? '' : '<p class="muted" style="font-size:11.5px;text-align:center;margin:10px 0 0">Forgot your password? Ask the admin — they can restore your access and you can set a new one once you\'re back in.</p>'}
           <p class="gate-msg" id="authError"></p>
         </form>
 
@@ -1391,6 +1396,11 @@
           localStorage.setItem(C.AGE_KEY, '1');
           render();
           break;
+        case 'toggle-pass': {
+          const p = $('#auPass');
+          if (p) { p.type = p.type === 'password' ? 'text' : 'password'; p.focus(); }
+          break;
+        }
 
         case 'toggle-theme': {
           const s2 = S.store.settings;

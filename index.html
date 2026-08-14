@@ -41,10 +41,14 @@
 
   <!-- ============================================================
        Load order matters, exactly like NutriWeb:
-         cloud  → admin  → config → store → api → memory → clone → ui → app
+         local → cloud → config → store → api → memory → clone → ui → admin → app
+       local.js is the zero-setup in-browser backend; supabase.js
+       routes to it whenever no Supabase keys are filled in, so the
+       login screen and admin panel work with no setup at all.
        Classic scripts (not ES modules) so the app also runs from
        file:// and from any plain static host with no build step.
        ============================================================ -->
+  <script src="./js/local.js"></script>
   <script src="./js/supabase.js"></script>
   <script src="./js/config.js"></script>
   <script src="./js/store.js"></script>

@@ -6,10 +6,11 @@
    build, and you still work offline from the last good copy.
    ============================================================ */
 
-const CACHE = 'aria-os-shell-v1';
+const CACHE = 'aria-os-shell-v2';
 const SHELL = [
   './index.html',
   './css/app.css',
+  './js/local.js',
   './js/supabase.js',
   './js/config.js',
   './js/store.js',

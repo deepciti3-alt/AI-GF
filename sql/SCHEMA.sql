@@ -35,7 +35,7 @@
 create or replace function public.gf_admin_emails()
 returns text[] language sql immutable as $$
   select array[
-    '9873993559@ariaos.app'        -- << admin mobile 9873993559
+    '9873393559@ariaos.app'        -- << admin mobile 9873393559
   ]::text[];
 $$;
 
