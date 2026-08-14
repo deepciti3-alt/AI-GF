@@ -45,8 +45,8 @@
   'use strict';
 
   const GF_SUPABASE = {
-    url: '',        // e.g. https://xxxxxxxxxxxx.supabase.co
-    anonKey: '',    // the "anon public" key from Settings → API
+    url: 'https://ldsoargzklmdwppauoje.supabase.co',        // e.g. https://xxxxxxxxxxxx.supabase.co
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxkc29hcmd6a2xtZHdwcGF1b2plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MDYyMTIsImV4cCI6MjEwMjI4MjIxMn0.oKO_lvCyKsWqwepzb964WyzTK4X4hA2ebBv2udwX2Tk',    // the "anon public" key from Settings → API
   };
 
   const PHONE_DOMAIN = 'ariaos.app';
