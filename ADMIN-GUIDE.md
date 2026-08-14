@@ -3,11 +3,13 @@
 Sign in with the admin mobile and you land on the panel and nothing else — no chat, no companions, no settings. The admin account is a command centre, exactly like NutriWeb. Everything below lives behind those five tabs.
 
 ```
-Admin mobile     9873993559
-Admin password   987399
+Admin mobile     9873393559
+Admin password   987339
 ```
 
-Change the number in `sql/SCHEMA.sql` → `gf_admin_emails()` **and** `js/admin.js` → `window.GF_ADMIN.phone`. Change the password from the login screen of a fresh account, or in Supabase → Authentication → Users.
+**Zero-setup mode (default).** With no Supabase keys filled in, the app runs on a built-in in-browser backend (`js/local.js`): the admin account above works out of the box, and the admin password is seeded from `js/local.js` → `window.GF_ADMIN.pass`. Change it there, or from **Settings → Change password** once signed in.
+
+**Supabase mode.** Once you fill in your Supabase URL + anon key, change the number in `sql/SCHEMA.sql` → `gf_admin_emails()` **and** `js/admin.js` → `window.GF_ADMIN.phone`. Change the password from the login screen of a fresh account, or in Supabase → Authentication → Users.
 
 ---
 

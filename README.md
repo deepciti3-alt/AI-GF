@@ -12,7 +12,7 @@ No build step. No framework. No `npm install`. Nine plain scripts and one styles
 
 | | Signs in with | Sees |
 |---|---|---|
-| **Admin** | `9873993559` / `987399` | The admin panel and nothing else — users, coupons, AI keys, personalities, config |
+| **Admin** | `9873393559` / `987339` | The admin panel and nothing else — users, coupons, AI keys, personalities, config |
 | **Everyone else** | Their own mobile + password | Chat, Companions, Clone Lab, Memory, Gallery, Settings. No AI configuration anywhere. |
 
 Sign in once and the device stays signed in. Nobody has to log in again.
@@ -21,16 +21,16 @@ Sign in once and the device stays signed in. Nobody has to log in again.
 
 ## Setup
 
-**Local only, 2 minutes** — no accounts, no gate, bring your own key:
+**Zero setup — just open it.** Host the folder anywhere static (GitHub Pages, Netlify, or `python3 -m http.server 8000` locally) and it already has everything: a real login screen, the admin panel, coupons, and the shared multi-API key list. No Supabase, no keys, no build step. It runs on a built-in in-browser backend (`js/local.js`).
 
-```bash
-cd "Project AI Girlfriend"
-python3 -m http.server 8000
-```
+- **Admin** signs in with `9873393559` / `987339` → lands on the admin panel.
+- In **🔑 AI Keys**, paste one or more provider keys (Gemini, Groq, DeepSeek, …). They save and are shared with everyone who signs in.
+- In **🎟️ Coupons**, create codes for 7 days, 1 month, or lifetime.
+- **Everyone else** taps **I'm new**, signs up with their own mobile + password, gets the free trial, and just talks. They never see an API setting.
 
-Open `http://localhost:8000`, tap **I'm 18 or older**, put a key into Settings, talk to her.
+Everything in zero-setup mode lives in that one browser. That's perfect for a single device or a demo.
 
-**The real thing, 20 minutes** — accounts, trials, coupons, admin panel, shared keys: follow `SETUP-SUPABASE.md`. Short version: make a Supabase project, run `sql/SCHEMA.sql`, paste two values into `js/supabase.js`, turn **Confirm email off**, deploy the folder anywhere static.
+**Go multi-device / multi-user (optional, ~20 minutes).** When you want accounts that follow people across phones and laptops with server-side security, wire up Supabase — follow `SETUP-SUPABASE.md`. Short version: make a Supabase project, run `sql/SCHEMA.sql`, paste two values into `js/supabase.js`, turn **Confirm email off**. The app switches to the Supabase backend automatically the moment those two values are filled in; the in-browser backend goes dormant.
 
 Then read `ADMIN-GUIDE.md` — it's how you run it day to day.
 
@@ -41,12 +41,12 @@ Then read `ADMIN-GUIDE.md` — it's how you run it day to day.
 Supabase's real phone auth wants to send an OTP, which needs a paid SMS gateway. We don't want an OTP — we want a number and a password. So every number is mapped to a synthetic internal address:
 
 ```
-9873993559  →  9873993559@ariaos.app
+9873393559  →  9873393559@ariaos.app
 ```
 
 and ordinary email+password auth carries it underneath. Nobody ever sees that address; it is a unique key, nothing more. Turn **Confirm email** off in Supabase (there's no inbox to confirm) and it works instantly on the free tier, forever, for nothing.
 
-The real number is stored properly in `gf_profiles.phone`, so the admin panel searches and displays actual mobile numbers. `+91 98739 93559`, `09873993559` and `9873993559` all resolve to the same person.
+The real number is stored properly in `gf_profiles.phone`, so the admin panel searches and displays actual mobile numbers. `+91 98733 93559`, `09873393559` and `9873393559` all resolve to the same person.
 
 ---
 
@@ -106,7 +106,8 @@ There's a per-user **Adult mode** toggle, and a global one in the admin Config t
 ```
 index.html                the shell, and nothing else
 css/app.css               the whole design system
-js/supabase.js            GfCloud    — cloud client + phone auth  ← paste your keys here
+js/local.js               GfLocal    — the zero-setup in-browser backend (login, admin, coupons, keys)
+js/supabase.js            GfCloud    — cloud client + phone auth; routes to GfLocal when no keys  ← paste your keys here
 js/config.js              GfConfig   — personalities, moods, providers, the core rules
 js/store.js               GfStore    — all state, per-account localStorage buckets
 js/api.js                 GfApi      — prompts, streaming, key rotation, images
@@ -122,7 +123,7 @@ SETUP-SUPABASE.md         cloud setup, step by step
 ADMIN-GUIDE.md            how to run it day to day
 ```
 
-Load order matters and is the architecture: cloud → config → store → api → memory → clone → ui → admin → app.
+Load order matters and is the architecture: local → cloud → config → store → api → memory → clone → ui → admin → app.
 
 Two places carry the admin identity and they must agree:
 

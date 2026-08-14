@@ -37,8 +37,9 @@
      ============================================================ */
 
   window.GF_ADMIN = window.GF_ADMIN || {
-    phone: '9873993559',
-    name: 'Abhishek',
+    phone: '9873393559',   // sign in with this number to reach the admin panel
+    pass:  '987339',       // local-backend admin password (js/local.js seeds it)
+    name:  'Admin',
   };
 
   const $ = (s, r = document) => r.querySelector(s);
@@ -1296,7 +1297,11 @@
 
         <div class="card card--flat" style="margin-top:18px">
           <h2>Health</h2>
-          <div class="prow"><span class="pl">Supabase project</span><span class="pv mono">${esc((GfCloud.settings.url || '').replace(/^https?:\/\//, '') || 'not set')}</span></div>
+          <div class="prow"><span class="pl">Backend</span><span class="pv mono">${
+            GfCloud.isLocalMode && GfCloud.isLocalMode()
+              ? 'Local (this browser)'
+              : esc((GfCloud.settings.url || '').replace(/^https?:\/\//, '') || 'not set')
+          }</span></div>
           <div class="prow"><span class="pl">Admin mobile</span><span class="pv mono">${esc(GfCloud.prettyPhone(window.GF_ADMIN.phone))}</span></div>
           <div class="prow"><span class="pl">Keys loaded</span><span class="pv">${parseKeyList(c).length}</span></div>
           <div class="prow"><span class="pl">Users</span><span class="pv">${users.length}</span></div>
