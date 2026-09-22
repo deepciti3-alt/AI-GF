@@ -38,7 +38,6 @@
 
   window.GF_ADMIN = window.GF_ADMIN || {
     phone: '9873993559',
-    name: 'Abhishek',
   };
 
   const $ = (s, r = document) => r.querySelector(s);

@@ -11,7 +11,7 @@
    we want a number and a password. So every mobile number is
    mapped to a synthetic address:
 
-       9873993559   →   9873993559@ariaos.app
+       98765 43210   →   9876543210@ariaos.app
 
    and we use ordinary email+password auth underneath. Nobody ever
    sees that address; it is an internal key. Turn "Confirm email"
@@ -61,7 +61,7 @@
      ============================================================ */
 
   /* Strip everything that isn't a digit, then drop an Indian country code
-     so +91 98739 93559, 09873993559 and 9873993559 are all the same person. */
+     so +91 98765 43210, 09876543210 and 9876543210 are all the same person. */
   function normalisePhone(input) {
     let d = String(input || '').replace(/\D/g, '');
     if (d.length > 10 && d.startsWith('91')) d = d.slice(2);

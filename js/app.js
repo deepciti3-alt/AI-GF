@@ -737,7 +737,7 @@
             <div class="phonefield">
               <span class="phonefield__cc">+91</span>
               <input class="input mono" id="auPhone" name="phone" type="tel" inputmode="numeric"
-                     placeholder="98739 93559" required autocomplete="username"
+                     placeholder="98765 43210" required autocomplete="username"
                      maxlength="15" value="${esc(U.authPhone || '')}">
             </div>
           </div>
