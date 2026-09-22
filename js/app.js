@@ -1839,6 +1839,11 @@
           try { S.importAll({ product: 'Aria OS', data: remote }); } catch (_) {}
         }
       }
+      // Identity always comes from the live auth session, never from a
+      // synced/imported data blob — reassert in case anything upstream
+      // touched it.
+      S.store.account.cloud = true;
+      S.store.account.phone = phone;
       if (isAdminUser()) page = 'admin';
       booted = true;
       render();

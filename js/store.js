@@ -436,9 +436,19 @@
     if (!payload || payload.product !== 'Aria OS') {
       throw new Error('That is not an Aria OS backup file.');
     }
+    // Account identity (email/phone/cloud/name) always comes from the live
+    // auth session/device — never from an imported data blob, which may be
+    // an older backup or a cloud-synced blob that never carries these
+    // fields at all (push() strips account before upload).
     const email = S.store?.account?.email || '';
-    S.store = migrate(payload.data, email, payload.data?.account?.name);
+    const phone = S.store?.account?.phone || '';
+    const cloud = !!S.store?.account?.cloud;
+    const name  = S.store?.account?.name || '';
+    S.store = migrate(payload.data, email, payload.data?.account?.name || name);
     S.store.account.email = email;
+    S.store.account.phone = phone;
+    S.store.account.cloud = cloud;
+    if (name) S.store.account.name = S.store.account.name || name;
     if (payload.media && typeof payload.media === 'object') S.media = payload.media;
     writeJSON(S.mediaBucket, S.media);
     saveNow();
