@@ -197,9 +197,10 @@ img{max-width:100%}
 
 .rail{
   position:fixed;inset:0 auto 0 0;width:var(--rail);
-  padding:28px 18px 24px;background:var(--page);
+  padding:28px 18px 24px;background:var(--sheet);
   border-right:1px solid var(--hairline);z-index:30;
   display:flex;flex-direction:column;
+  box-shadow:1px 0 0 var(--hairline),4px 0 24px -18px rgba(11,31,58,.25);
 }
 .brand{
   display:flex;align-items:center;gap:11px;padding:0 8px 22px;
@@ -233,7 +234,7 @@ img{max-width:100%}
 /* ---- the dark-mode switch that lives in the rail ---- */
 .themeswitch{
   position:relative;display:grid;grid-template-columns:1fr 1fr;gap:2px;
-  background:var(--sheet);border:1px solid var(--hairline);border-radius:14px;
+  background:var(--card);border:1px solid var(--hairline);border-radius:14px;
   padding:4px;cursor:pointer;user-select:none;isolation:isolate;
 }
 .themeswitch:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue-3) 30%,transparent)}
@@ -261,7 +262,7 @@ kbd{
   border:1px solid var(--hairline);border-bottom-width:2px;
   border-radius:5px;padding:1px 5px;
 }
-.user-chip{display:flex;align-items:center;gap:10px;padding:10px;border-radius:15px;background:var(--sheet)}
+.user-chip{display:flex;align-items:center;gap:10px;padding:10px;border-radius:15px;background:var(--card);border:1px solid var(--hairline)}
 .user-chip__meta{min-width:0;flex:1}
 .user-chip__name{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .user-chip__role{font-size:11px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
