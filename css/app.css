@@ -143,7 +143,7 @@ img{max-width:100%}
 .field .hint{font-size:12.5px;color:var(--ink-2);line-height:1.45}
 .input,.select,.textarea{
   width:100%;min-height:46px;border:1px solid var(--hairline);border-radius:14px;
-  background:var(--card);color:var(--ink);padding:11px 13px;
+  background:var(--card);color:var(--ink);padding:11px 13px;font-size:16px;
   transition:border-color .14s var(--ease),box-shadow .14s var(--ease);
 }
 .textarea{min-height:120px;resize:vertical;line-height:1.55}
@@ -172,6 +172,11 @@ img{max-width:100%}
 .pill--hot{background:linear-gradient(135deg,var(--red),var(--red-deep));color:#fff}
 
 .empty{padding:42px 22px;text-align:center;color:var(--ink-2);background:var(--sheet);border-radius:var(--r-panel)}
+/* an .empty placeholder dropped straight into a grid (gallery with no
+   pictures yet, a companion list with none matching a filter) must span
+   every column itself — otherwise it inherits one auto-fill track and
+   turns into a narrow, oddly-wrapped column stranded in empty space */
+.grid > .empty,.gf-grid > .empty,.gallery > .empty{grid-column:1/-1}
 .empty strong{display:block;color:var(--ink);font-family:var(--f-display);font-size:21px;margin-bottom:6px}
 
 .icon{width:22px;height:22px;display:block;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:square;stroke-linejoin:miter;flex:0 0 auto}
@@ -357,7 +362,8 @@ kbd{
 .session-top__meta{min-width:0;flex:1}
 .session-top__name{font-family:var(--f-display);font-weight:700;font-size:16px;line-height:1.15;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.session-top__status{font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:6px}
+.session-top__status{font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:6px;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:0 0 auto}
 .dot--busy{background:var(--orange);animation:pulse 1.1s infinite}
 .dot--off{background:var(--ink-3)}
@@ -627,13 +633,15 @@ html[data-theme="dark"] .abadge.warn{color:#FCD34D}
 html[data-theme="dark"] .abadge.bad {color:#FCA5A5}
 
 .krow{
-  display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--sheet);
+  display:flex;align-items:flex-start;gap:10px;padding:11px 12px;background:var(--sheet);
   border:1px solid var(--hairline);border-radius:14px;margin-bottom:8px;
 }
 .krow.is-primary{border-color:var(--blue-3);background:var(--mint-100)}
-.krow__i{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);min-width:20px}
+.krow__i{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);min-width:20px;padding-top:2px}
 .krow__k{font-family:var(--f-mono);font-size:12.5px;overflow-wrap:anywhere;min-width:0;flex:1}
-.krow__p{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--blue-3)}
+.krow__p{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--blue-3);overflow-wrap:anywhere}
+.krow > span:not([class]){padding-top:1px}
+.krow .iconbtn{flex:0 0 auto}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .btnrow{display:flex;gap:9px;flex-wrap:wrap}
@@ -732,6 +740,12 @@ html[data-skin="aurora"] .aurora::after{
   .clone-grid{grid-template-columns:1fr}
   .chat-stage{min-height:calc(100vh - 190px)}
   .transcript{padding-bottom:230px}
+
+  /* tab rows scroll sideways on narrow screens instead of wrapping into a
+     ragged multi-line block — the admin panel's 5 tabs were the worst case */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-bottom:18px}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs .tab{flex:0 0 auto}
 }
 
 @media (max-width:760px){
@@ -744,6 +758,12 @@ html[data-skin="aurora"] .aurora::after{
   .grid2{grid-template-columns:1fr}
   .metrics{grid-template-columns:1fr 1fr}
   .gf-grid{grid-template-columns:1fr}
+
+  /* side-by-side action buttons stack instead of squeezing their labels
+     onto two lines ("Test and add" in admin, "Study and build her" in
+     Clone Lab both wrapped mid-word at phone widths) */
+  .btnrow{flex-direction:column}
+  .btnrow > *{flex:1 1 auto}
 }
 
 @media (max-width:420px){
