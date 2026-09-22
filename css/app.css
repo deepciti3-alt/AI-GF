@@ -45,6 +45,17 @@
   --ease:cubic-bezier(.2,.8,.2,1);
 
   --rail:220px;
+
+  /* Fallbacks for the skin-scoped tokens below (--red/--blue/--orange etc.
+     only exist under html[data-skin="..."]). index.html now sets
+     data-skin="brand" on <html> so these are set immediately, but if that
+     attribute is ever missing for a moment (or removed by accident again),
+     buttons like .btn--hot must not silently render invisible (white text
+     on an unset/transparent background) -- so the real "brand" values are
+     duplicated here as the safe default. */
+  --red:#C62828; --red-deep:#9E1C1C;
+  --blue:#0B1F3A; --blue-2:#12325B; --blue-3:#1C5BB8;
+  --orange:#EF7C1A; --orange-2:#F5A623;
 }
 
 /* ---- the brand layer: GRIVAA navy + red. This is what renders. ---- */
