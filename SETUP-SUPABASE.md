@@ -32,7 +32,7 @@ Open `sql/SCHEMA.sql` and set it near the top. Note the `@ariaos.app` suffix —
 create or replace function public.gf_admin_emails()
 returns text[] language sql immutable as $$
   select array[
-    '9873993559@ariaos.app'        -- << admin mobile
+    '9999999999@ariaos.app'        -- << replace with YOUR admin mobile
   ]::text[];
 $$;
 ```
@@ -43,8 +43,7 @@ Then open `js/admin.js` and set the **same number**:
 
 ```js
 window.GF_ADMIN = {
-  phone: '9873993559',
-  name:  'Abhishek',
+  phone: '9999999999',   // same number as above, no country code
 };
 ```
 
@@ -75,7 +74,7 @@ The app auto-detects this. The moment both are filled in, the mobile login scree
 
 Then **turn "Confirm email" OFF.** This is not optional.
 
-Login is by mobile number, and the number is carried internally as `9873993559@ariaos.app` — an address that does not exist and never receives mail. If Supabase is waiting for someone to click a confirmation link, nobody can ever sign in. With it off, a new account works the instant it's created.
+Login is by mobile number, and the number is carried internally as `<number>@ariaos.app` — an address that does not exist and never receives mail. If Supabase is waiting for someone to click a confirmation link, nobody can ever sign in. With it off, a new account works the instant it's created.
 
 (This is why there's no SMS provider and no OTP. Supabase's native phone auth needs a paid SMS gateway; this approach needs nothing and costs nothing.)
 
@@ -93,7 +92,7 @@ HTTPS is needed for the microphone, the service worker and the install prompt. A
 
 ## 8 · First run
 
-1. Open the site → **I'm new — make me an account** → mobile `9873993559`, password `987399`.
+1. Open the site → **I'm new — make me an account** → use the same admin mobile you set in step 3, and pick your own password (6+ characters).
 2. You land straight in the **admin panel**, and nothing else. That's correct — the admin account is a command centre, not a companion account.
 3. **🔑 AI Keys** → add a key → **⚡ Test and add**.
 4. **👥 Users → ＋ Add user** → make yourself a test account on a different number, then open it in another browser and check she talks.

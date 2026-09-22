@@ -3,8 +3,9 @@
 Sign in with the admin mobile and you land on the panel and nothing else — no chat, no companions, no settings. The admin account is a command centre, exactly like NutriWeb. Everything below lives behind those five tabs.
 
 ```
-Admin mobile     9873993559
-Admin password   987399
+Admin mobile     whatever number you set as admin (see below)
+Admin password   whatever you set when that account was created —
+                  reset it anytime from Supabase → Authentication → Users
 ```
 
 Change the number in `sql/SCHEMA.sql` → `gf_admin_emails()` **and** `js/admin.js` → `window.GF_ADMIN.phone`. Change the password from the login screen of a fresh account, or in Supabase → Authentication → Users.

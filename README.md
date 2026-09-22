@@ -12,7 +12,7 @@ No build step. No framework. No `npm install`. Nine plain scripts and one styles
 
 | | Signs in with | Sees |
 |---|---|---|
-| **Admin** | `9873993559` / `987399` | The admin panel and nothing else — users, coupons, AI keys, personalities, config |
+| **Admin** | your admin mobile + password (set in `sql/SCHEMA.sql` / `js/admin.js` — see `ADMIN-GUIDE.md`) | The admin panel and nothing else — users, coupons, AI keys, personalities, config |
 | **Everyone else** | Their own mobile + password | Chat, Companions, Clone Lab, Memory, Gallery, Settings. No AI configuration anywhere. |
 
 Sign in once and the device stays signed in. Nobody has to log in again.
@@ -41,12 +41,12 @@ Then read `ADMIN-GUIDE.md` — it's how you run it day to day.
 Supabase's real phone auth wants to send an OTP, which needs a paid SMS gateway. We don't want an OTP — we want a number and a password. So every number is mapped to a synthetic internal address:
 
 ```
-9873993559  →  9873993559@ariaos.app
+98765 43210  →  9876543210@ariaos.app
 ```
 
 and ordinary email+password auth carries it underneath. Nobody ever sees that address; it is a unique key, nothing more. Turn **Confirm email** off in Supabase (there's no inbox to confirm) and it works instantly on the free tier, forever, for nothing.
 
-The real number is stored properly in `gf_profiles.phone`, so the admin panel searches and displays actual mobile numbers. `+91 98739 93559`, `09873993559` and `9873993559` all resolve to the same person.
+The real number is stored properly in `gf_profiles.phone`, so the admin panel searches and displays actual mobile numbers. `+91 98765 43210`, `09876543210` and `9876543210` all resolve to the same person.
 
 ---
 
