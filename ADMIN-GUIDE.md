@@ -1,6 +1,6 @@
 # Running it
 
-Sign in with the admin mobile and you land on the panel and nothing else — no chat, no companions, no settings. The admin account is a command centre, exactly like NutriWeb. Everything below lives behind those five tabs.
+Sign in with the admin mobile and you land on the panel and nothing else — no chat, no companions, no settings. The admin account is a command centre, exactly like NutriWeb. Everything below lives behind those six tabs.
 
 ```
 Admin mobile     whatever number you set as admin (see below)
@@ -76,6 +76,48 @@ Everyone signed in *with access* gets this list at runtime. **Users have no API 
 Anything you build or clone can be pushed out as a personality every user gets. **Publish to everyone**; **Hide** takes her out of the list without deleting. Conversations people already had with her stay on their devices.
 
 Only the personality travels. Chats and memories never leave the user's own account.
+
+---
+
+## 🧠 Train
+
+Teach the girls a little every day, without touching code. Everything here reaches every user's app on their next refresh (every 15 minutes, or when they reopen the app) and she uses it from her very next message.
+
+**Teach her something today** — pick who it's for (*All girls*, Priya, Aisha, Riya, any published or custom girl), pick the kind of note, write it like you'd tell a person:
+
+| Kind | Use it for |
+|---|---|
+| ✅ Do this | "When he says he's tired, don't end the chat — keep him talking a bit" |
+| 🚫 Never do | "Never reply with just hmm / ok. Never say 'How can I help you'" |
+| 💬 Example reply | *When he says* "good night" → *she replies* "itni jaldi? 🥺 5 min aur na" |
+| 🏠 Her life | Her job, city, friends, pet, routine — she uses it naturally, never recites it |
+| ✍️ Texting style | "lowercase mostly, 'hehe' a lot, long 'uffff'" |
+
+Tick *each line is a separate note* and you can paste a whole list in one go. When two notes disagree, the newer one wins.
+
+**Test her live** — chat with any girl using the current notes. *Let her text first* shows what her proactive message looks like. Didn't like a reply? Write the better one and press **Save as example** — she learns it.
+
+**Everything she's been taught** — all notes, grouped by day, filterable by girl. **Turn off** keeps a note for later; ✕ deletes it. **See what she reads** shows exactly what goes into her prompt.
+
+### How she behaves on her own
+
+| Setting | Default | What it does |
+|---|---|---|
+| She texts first | on | Messages him on her own when he goes quiet, or has one waiting when he comes back |
+| Quiet for (minutes) | 20 | How long after he goes quiet before she texts. Randomised, and doubles after each unanswered text |
+| Away for (hours) | 4 | After this long, opening the app finds a "missed you / good morning" message waiting |
+| Max per girl per day | 4 | Hard cap |
+| Stop after unanswered | 2 | She never spams a man who isn't replying |
+| Quiet hours | 1 → 8 | She never texts first in this window |
+| Double texting | on | Sometimes sends a reply as two bubbles, with typing dots between |
+| Reading pause | on | A short "seen" pause before she starts typing |
+| Adds her own thing | on | Every reply brings something of hers instead of only answering the question |
+
+Users can switch *Let her text first* off, and turn on notifications, from their own Settings.
+
+**Limit:** she can only text first while the app is open — a tab, or the installed app in the background. Texting a phone whose app is fully closed needs a push server (Supabase Edge Function + Web Push); that's a separate step.
+
+**Install:** on an existing project run `sql/UPGRADE-training.sql` once in the Supabase SQL editor. New projects get it from `SCHEMA.sql`.
 
 ---
 
