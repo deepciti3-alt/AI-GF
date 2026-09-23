@@ -202,6 +202,8 @@ insert into public.gf_config (id) values (1) on conflict (id) do nothing;
 
 -- older installs: add the column without touching anything else
 alter table public.gf_config add column if not exists nsfw_enabled boolean not null default true;
+-- how she behaves on her own: texting first, double texts, reply pauses (admin → Train tab)
+alter table public.gf_config add column if not exists behaviour jsonb not null default '{}'::jsonb;
 
 alter table public.gf_config enable row level security;
 drop policy if exists "config admin all" on public.gf_config;
@@ -235,6 +237,34 @@ drop policy if exists "personas admin all" on public.gf_personas;
 create policy "personas read" on public.gf_personas
   for select using ( active or public.gf_is_admin() );
 create policy "personas admin all" on public.gf_personas
+  for all using ( public.gf_is_admin() ) with check ( public.gf_is_admin() );
+
+
+-- ============================================================
+-- 5b · TRAINING — daily notes the admin gives the companions
+--      target: 'all' | a built-in id ('romance.priya', 'care.aisha',
+--              'drive.riya') | 'name:<lowercase name>' for any other girl
+--      kind:   rule | avoid | example | fact | style
+--      Users never read this table directly — the active rows reach
+--      them inside gf_get_config(), which is gated on access.
+-- ============================================================
+
+create table if not exists public.gf_training (
+  id          uuid primary key default gen_random_uuid(),
+  target      text        not null default 'all',
+  kind        text        not null default 'rule',
+  prompt      text        not null default '',   -- for examples: what he says
+  body        text        not null,              -- the rule / her ideal reply / the fact
+  active      boolean     not null default true,
+  created_at  timestamptz not null default now(),
+  constraint gf_training_kind check (kind in ('rule','avoid','example','fact','style'))
+);
+
+create index if not exists gf_training_target_idx on public.gf_training (target, active);
+
+alter table public.gf_training enable row level security;
+drop policy if exists "training admin all" on public.gf_training;
+create policy "training admin all" on public.gf_training
   for all using ( public.gf_is_admin() ) with check ( public.gf_is_admin() );
 
 
@@ -345,6 +375,15 @@ begin
     'ok', true,
     'provider', c.provider, 'api_key', c.api_key, 'model', c.model,
     'announcement', c.announcement, 'nsfw_enabled', c.nsfw_enabled,
+    'behaviour', coalesce(c.behaviour, '{}'::jsonb),
+    'training', coalesce((
+      select json_agg(json_build_object(
+               'id', t.id, 'target', t.target, 'kind', t.kind,
+               'prompt', t.prompt, 'body', t.body, 'at', t.created_at)
+             order by t.created_at)
+      from (select * from public.gf_training where active
+            order by created_at desc limit 400) t
+    ), '[]'::json),
     'updated_at', c.updated_at
   );
 end $$;
@@ -598,7 +637,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['gf_config','gf_coupons','gf_profiles','gf_admin_log','gf_personas'] loop
+  foreach t in array array['gf_config','gf_coupons','gf_profiles','gf_admin_log','gf_personas','gf_training'] loop
     if to_regclass('public.' || t) is null then continue; end if;
     execute format('revoke all on table public.%I from anon, authenticated', t);
     if t in ('gf_admin_log') then
