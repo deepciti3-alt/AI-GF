@@ -106,6 +106,8 @@
         skin: 'brand',
         nsfw: true,
         typingDelay: true,
+        letHerText: true,        // she may text first (admin sets the rules)
+        notifyMe: false,         // browser notification when she does
         _adminCfgAt: '',
         _models: {},
       },

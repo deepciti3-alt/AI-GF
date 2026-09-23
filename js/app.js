@@ -35,6 +35,8 @@
   let recognition = null;
   let voiceStopTimer = null;
   let abortCtl = null;
+  let herTyping = false;     // typing dots between double-text bubbles
+  let herReading = false;    // the short "seen" pause before she types
   const draftState = {};
 
   // ephemeral UI state — deliberately not persisted
@@ -181,8 +183,8 @@
         <div class="session-top__meta">
           <div class="session-top__name">${esc(c.name)}</div>
           <div class="session-top__status">
-            <span class="dot ${sending ? 'dot--busy' : (window.GfApi.ready() ? '' : 'dot--off')}"></span>
-            ${sending ? 'typing…' : (window.GfApi.ready() ? `${mood.emoji} ${esc(mood.label)}` : 'no AI key yet')}
+            <span class="dot ${(sending || herTyping) ? 'dot--busy' : (window.GfApi.ready() ? '' : 'dot--off')}"></span>
+            ${herReading ? 'seen' : (sending || herTyping) ? 'typing…' : (window.GfApi.ready() ? `${mood.emoji} ${esc(mood.label)}` : 'no AI key yet')}
           </div>
         </div>
         <div class="console">
@@ -194,9 +196,9 @@
 
       <div class="transcript" id="transcript">
         ${welcome}${body}
-        ${sending ? `<article class="msg msg--ai" id="streamingMessage">
+        ${((sending && !herReading) || herTyping) ? `<article class="msg msg--ai" id="streamingMessage">
           <div class="msg__who"><span class="msg__mark"></span>${esc(c.name)}</div>
-          <div class="msg__body">${streamText ? nl(streamText) : '<span class="typing"><i></i><i></i><i></i></span>'}</div>
+          <div class="msg__body">${(streamText && !herTyping) ? nl(streamText) : '<span class="typing"><i></i><i></i><i></i></span>'}</div>
         </article>` : ''}
       </div>
 
@@ -668,6 +670,18 @@
           ${toggle('Stream her replies', 'streaming', 'Words appear as she types them instead of landing all at once.')}
           ${toggle('Typing pause', 'typingDelay', 'A short human-sized pause before her reply appears.')}
           ${toggle('Read her replies aloud', 'autoSpeak', 'Uses your browser voice. No extra key.')}
+          ${toggle('Let her text first', 'letHerText', 'She can message you on her own when you go quiet or come back after a while.')}
+          ${s.letHerText !== false ? `<div class="row row--between" style="margin:14px 0">
+            <div style="max-width:74%">
+              <strong style="font-size:14px">Notify me when she texts</strong>
+              <p class="muted" style="margin:3px 0 0;font-size:12.5px">${s.notifyMe && window.Notification?.permission === 'granted'
+                ? 'On. Works while the app is open or running in the background.'
+                : 'Get a notification when she messages and the app is in the background.'}</p>
+            </div>
+            ${s.notifyMe && window.Notification?.permission === 'granted'
+              ? '<span class="abadge good">On</span>'
+              : '<button class="btn btn--small btn--soft" data-action="enable-notify">Turn on</button>'}
+          </div>` : ''}
         </div>
 
         <div class="card card--6">${providerCard}</div>
@@ -918,9 +932,22 @@
      new user turn of its own. */
   async function requestReply(c) {
     if (sending) return;
+    const b = behaviour();
     sending = true;
     streamText = '';
+
+    // "seen" — a short human pause before the typing dots
+    if (b.readDelay && S.store.settings.typingDelay !== false) {
+      herReading = true;
+      render();
+      await sleep(500 + Math.random() * 1400);
+      herReading = false;
+    }
     render();
+
+    // decided up front so a split reply streams only its first bubble
+    const splitPlan = !!b.doubleText && Math.random() < 0.55;
+    const firstPart = (t) => (splitPlan ? String(t).split(/\n+/)[0] : t);
 
     abortCtl = new AbortController();
     let reply = '';
@@ -930,11 +957,12 @@
         onToken: (tok) => {
           streamText += tok;
           const body = $('#streamingMessage .msg__body');
-          if (body) { body.textContent = streamText; scrollDown(false); }
+          if (body) { body.textContent = firstPart(streamText); scrollDown(false); }
         },
       });
     } catch (e) {
       sending = false;
+      herReading = false;
       abortCtl = null;
       if (e.name === 'AbortError') { streamText = ''; render(); return; }
       S.pushMessage(c.id, 'assistant', `⚠️ ${e.message}`, { error: true });
@@ -942,19 +970,159 @@
       return;
     }
 
-    const wait = streamText ? 0 : humanDelay(reply);
+    const wait = streamText ? 0 : humanDelay(firstPart(reply));
     if (wait) await new Promise((r) => setTimeout(r, wait));
 
     sending = false;
     abortCtl = null;
     streamText = '';
-    S.pushMessage(c.id, 'assistant', reply, { mood: c.mood });
-    render();
+    await deliver(c, reply, {}, splitPlan);
 
     if (S.store.settings.autoSpeak) speak(reply);
     GfMemory.maybeExtract(c).then((r) => {
       if (r && r.added) render();
     }).catch(() => {});
+  }
+
+  /* ============================================================
+     SHE TEXTS FIRST — proactive messages and human rhythm
+     ------------------------------------------------------------
+     Rules come from the admin (🧠 Train → How she behaves on her
+     own) over C.BEHAVIOUR_DEFAULTS. Runs only while the app is
+     open (a tab, or the installed PWA) — a browser cannot wake a
+     closed web app without a push server.
+     ============================================================ */
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const behaviour = () => ({ ...(C.BEHAVIOUR_DEFAULTS || {}), ...(window.GfBehaviour || {}) });
+
+  /* One reply, sometimes as two or three bubbles a moment apart. */
+  async function deliver(c, text, extra = {}, split = false) {
+    const lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    const doSplit = split && lines.length > 1 && lines.length <= 4 && !/```|^\s*[-*•]\s/m.test(text);
+    if (!doSplit) {
+      S.pushMessage(c.id, 'assistant', text, { mood: c.mood, ...extra });
+      if (page === 'chat') render();
+      return;
+    }
+    for (let i = 0; i < lines.length; i++) {
+      if (i) {
+        herTyping = true;
+        if (page === 'chat') render();
+        await sleep(600 + Math.min(2000, lines[i].length * 40) + Math.random() * 600);
+        herTyping = false;
+      }
+      S.pushMessage(c.id, 'assistant', lines[i], i ? { mood: c.mood, cont: true } : { mood: c.mood, ...extra });
+      if (page === 'chat') render();
+    }
+  }
+
+  const nudgeState = { busy: false, jitter: {} };
+
+  function inQuietHours(b) {
+    const h = new Date().getHours();
+    const f = Number(b.quietFrom), t = Number(b.quietTo);
+    if (f === t) return false;
+    return f < t ? (h >= f && h < t) : (h >= f || h < t);
+  }
+  function nudgesToday(c) {
+    const d = new Date().toDateString();
+    return c.messages.filter((m) => m.proactive && new Date(m.at).toDateString() === d).length;
+  }
+  function unansweredRun(c) {
+    let n = 0;
+    for (let i = c.messages.length - 1; i >= 0; i--) {
+      const m = c.messages[i];
+      if (m.role === 'user') break;
+      if (m.proactive) n++;
+    }
+    return n;
+  }
+
+  function canNudge(c, b) {
+    if (!b.proactive || S.store.settings.letHerText === false) return false;
+    if (!booted || !S.ready || isAdminUser()) return false;
+    if (!localStorage.getItem(C.AGE_KEY)) return false;
+    if (sending || herTyping || nudgeState.busy || !window.GfApi.ready()) return false;
+    if (GfAccess.isCloud() && (!GfCloud.currentUser() || !GfAccess.hasAccess())) return false;
+    if (inQuietHours(b)) return false;
+    if (nudgesToday(c) >= Number(b.maxPerDay)) return false;
+    if (unansweredRun(c) >= Number(b.maxUnanswered)) return false;
+    if ($('#composerInput')?.value.trim()) return false;          // he's typing — wait
+    const last = c.messages[c.messages.length - 1];
+    if (!last || last.error) return false;                        // never cold-open a brand-new chat
+    return true;
+  }
+
+  function nudgePlan(c, b) {
+    const last = c.messages[c.messages.length - 1];
+    const gap = Date.now() - (last.at || 0);
+    const key = c.id + ':' + last.id;
+    if (!nudgeState.jitter[key]) nudgeState.jitter[key] = 1 + Math.random() * 0.8;
+    // each unanswered text makes her wait longer before the next one
+    const idleMs = Number(b.idleMin) * 60000 * nudgeState.jitter[key] * (1 + unansweredRun(c));
+    const comebackMs = Number(b.comebackHrs) * 3600000;
+    if (gap < idleMs) return null;
+    if (gap >= comebackMs) {
+      const h = new Date().getHours();
+      if (h >= 6 && h < 11) return { kind: 'morning', arg: 0 };
+      if (h >= 22 || h < 1) return { kind: 'night', arg: 0 };
+      return { kind: 'comeback', arg: Math.round(gap / 3600000) };
+    }
+    return { kind: 'idle', arg: Math.round(gap / 60000) };
+  }
+
+  async function proactiveTick() {
+    try {
+      const c = S.ready && S.active();
+      if (!c) return;
+      const b = behaviour();
+      if (!canNudge(c, b)) return;
+      const plan = nudgePlan(c, b);
+      if (!plan) return;
+
+      nudgeState.busy = true;
+      const lastId = c.messages[c.messages.length - 1]?.id;
+      const text = String(await window.GfApi.initiate(c, plan.kind, plan.arg) || '')
+        .trim().replace(/^["“']+|["”']+$/g, '');
+      // he sent something while she was writing — drop hers, his wins
+      if (!text || sending || c.messages[c.messages.length - 1]?.id !== lastId) return;
+
+      await deliver(c, text, { proactive: true, nudge: plan.kind }, behaviour().doubleText && Math.random() < 0.4);
+      announce(c, text);
+    } catch (e) {
+      console.warn('she tried to text first and failed:', e.message);
+    } finally {
+      nudgeState.busy = false;
+    }
+  }
+
+  /* Tell him she texted: a notification if the app is in the background,
+     a toast if he's on another page. */
+  function announce(c, text) {
+    const short = text.split(/\n/)[0].slice(0, 120);
+    if (document.hidden && S.store.settings.notifyMe && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        navigator.serviceWorker?.controller?.postMessage({ type: 'NOTIFY', title: c.name, body: short, tag: 'aria-' + c.id });
+        if (!navigator.serviceWorker?.controller) new Notification(c.name, { body: short, icon: './assets/icon-192.png' });
+      } catch (_) {}
+    }
+    if (page !== 'chat') toast(`${c.emoji || '💜'} ${c.name}: ${short}`);
+  }
+
+  async function enableNotifications() {
+    if (!('Notification' in window)) { toast('This browser does not support notifications.'); return; }
+    const p = await Notification.requestPermission();
+    S.store.settings.notifyMe = p === 'granted';
+    S.saveNow();
+    toast(p === 'granted' ? 'Done — you\'ll know when she texts 💌' : 'Notifications are blocked in your browser settings.');
+    render();
+  }
+
+  function startProactive() {
+    setInterval(proactiveTick, 45000);
+    setTimeout(proactiveTick, 5000);   // a message waiting when he opens the app
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(proactiveTick, 2500); });
   }
 
   async function regenerate(mid) {
@@ -1528,6 +1696,7 @@
         }
 
         case 'coupon': GfGate.couponSheet(); break;
+        case 'enable-notify': enableNotifications(); break;
         case 'change-password':
           modal('Change your password', `
             <div class="field">
@@ -1889,6 +2058,7 @@
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
+    startProactive();
   }
 
   window.GfApp = { render, go, send, boot, get page() { return page; } };

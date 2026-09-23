@@ -392,6 +392,22 @@ A line only you would send: ${p.tell || ''}`;
 
     HERO_LINES,
 
+    /* How she behaves on her own. The admin overrides any of these from
+       🧠 Train → "How she behaves on her own"; they reach every user
+       inside gf_get_config as `behaviour`. */
+    BEHAVIOUR_DEFAULTS: {
+      proactive: true,      // she can text first
+      idleMin: 20,          // nudge after he's been quiet this many minutes (app open)
+      comebackHrs: 4,       // a message is waiting when he returns after this long
+      maxPerDay: 4,         // cap on messages she starts, per girl, per day
+      maxUnanswered: 2,     // stop after this many unanswered texts in a row
+      quietFrom: 1,         // no texting first from…
+      quietTo: 8,           // …until (24h clock, local time)
+      doubleText: true,     // sometimes splits a reply into two bubbles
+      readDelay: true,      // a short "reading…" pause before she types
+      initiative: true,     // adds her own thing to replies instead of only answering
+    },
+
     /* Index for fast lookup */
     byId(id) { return PERSONALITIES.find((p) => p.id === id) || null; },
     inFamily(key) { return PERSONALITIES.filter((p) => p.family === key); },

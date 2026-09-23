@@ -94,6 +94,14 @@
      2 · GfAccess — the entitlement state machine
      ============================================================ */
 
+  try {
+    const cached = JSON.parse(localStorage.getItem('ariaos.training') || 'null');
+    if (cached) {
+      window.GfTraining = window.GfTraining || cached.t || [];
+      window.GfBehaviour = window.GfBehaviour || cached.b || {};
+    }
+  } catch (_) {}
+
   const GfAccess = (function () {
     let profile = null;
     let cfg = null;
@@ -185,6 +193,13 @@
        left behind by an older build is scrubbed on every launch. */
     function applyConfig(c) {
       if (!c) return;
+      // training notes + behaviour — not secret, so cached for offline starts
+      if (Array.isArray(c.training)) window.GfTraining = c.training;
+      if (c.behaviour && typeof c.behaviour === 'object') window.GfBehaviour = c.behaviour;
+      try {
+        localStorage.setItem('ariaos.training', JSON.stringify({
+          t: window.GfTraining || [], b: window.GfBehaviour || {} }));
+      } catch (_) {}
       const s = window.GfStore?.store?.settings;
       if (!s) return;
       const stamp = String(c.updated_at || '');
@@ -503,6 +518,7 @@
         loadCoupons().catch(note),
         loadConfig().catch(note),
         loadPersonas().catch(note),
+        loadTraining().catch((e) => console.warn('training not installed yet', e)),
       ]);
       loaded = true;
     }
@@ -548,6 +564,7 @@
           <button class="tab ${tab === 'coupons' ? 'is-active' : ''}" data-atab="coupons">🎟️ Coupons</button>
           <button class="tab ${tab === 'keys' ? 'is-active' : ''}" data-atab="keys">🔑 AI Keys</button>
           <button class="tab ${tab === 'personas' ? 'is-active' : ''}" data-atab="personas">💋 Personas</button>
+          <button class="tab ${tab === 'train' ? 'is-active' : ''}" data-atab="train">🧠 Train</button>
           <button class="tab ${tab === 'config' ? 'is-active' : ''}" data-atab="config">⚙️ Config</button>
         </div>
         ${errorBanner()}
@@ -556,7 +573,7 @@
       $$('[data-atab]').forEach((b) => { b.onclick = () => { tab = b.dataset.atab; render(); }; });
 
       if (!loaded) { loadAll().then(render).catch((e) => toast(e.message)); return; }
-      ({ users: drawUsers, coupons: drawCoupons, config: drawConfig, keys: drawKeys, personas: drawPersonas }[tab] || drawUsers)();
+      ({ users: drawUsers, coupons: drawCoupons, config: drawConfig, keys: drawKeys, personas: drawPersonas, train: drawTrain }[tab] || drawUsers)();
     }
 
     /* ---------- Users ---------- */
@@ -1221,6 +1238,400 @@
           });
         };
       });
+    }
+
+    /* ============================================================
+       🧠 TRAIN — teach the girls a little every day
+       ------------------------------------------------------------
+       Every note is one row in gf_training. Active rows reach every
+       user inside gf_get_config and are woven into the system prompt
+       by GfApi.trainingBlock(). Nothing here touches anyone's chats.
+       ============================================================ */
+
+    const KINDS = {
+      rule:    { label: 'Do this',       emoji: '✅', ph: 'e.g. When he says he is tired, tell him to sleep but keep talking a bit — don\'t end the chat.' },
+      avoid:   { label: 'Never do',      emoji: '🚫', ph: 'e.g. Never reply with just "hmm" or "okay". Never say "How can I help you".' },
+      example: { label: 'Example reply', emoji: '💬', ph: 'How she SHOULD reply, in her exact words.' },
+      fact:    { label: 'Her life',      emoji: '🏠', ph: 'e.g. She works at a design agency in Gurgaon, hates Mondays, has a cat called Mishti.' },
+      style:   { label: 'Texting style', emoji: '✍️', ph: 'e.g. Uses "hehe" a lot, lowercase, sends voice-note style long "uffff".' },
+    };
+
+    let training = [];
+    let trainForm = { target: 'all', kind: 'rule', perLine: true };
+    let trainFilter = '';
+    let testState = { target: 'romance.priya', mood: '', thread: [], busy: false };
+
+    async function loadTraining() {
+      const { data, error } = await GfCloud.table('gf_training').select('*').order('created_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      training = data || [];
+      // the admin's own app (and the live tester) use the new notes at once
+      window.GfTraining = training.filter((t) => t.active).slice(0, 400).reverse()
+        .map((t) => ({ id: t.id, target: t.target, kind: t.kind, prompt: t.prompt, body: t.body, at: t.created_at }));
+    }
+
+    /* Everyone the admin can train: all · the built-ins · published · own customs. */
+    function trainTargets() {
+      const out = [{ key: 'all', label: '🌐 All girls (everyone)' }];
+      C().PERSONALITIES.forEach((p) => out.push({ key: p.id, label: `${p.emoji} ${p.defaultName} — ${p.label}` }));
+      const seen = new Set();
+      personas.forEach((p) => {
+        const k = 'name:' + String(p.name || '').trim().toLowerCase();
+        if (seen.has(k)) return; seen.add(k);
+        out.push({ key: k, label: `${p.emoji || '💜'} ${p.name} (published)` });
+      });
+      (window.GfStore?.list?.() || []).filter((c) => c.custom).forEach((c) => {
+        const k = 'name:' + String(c.name || '').trim().toLowerCase();
+        if (seen.has(k)) return; seen.add(k);
+        out.push({ key: k, label: `${c.emoji || '💜'} ${c.name} (yours)` });
+      });
+      training.forEach((t) => {
+        if (!out.some((o) => o.key === t.target)) out.push({ key: t.target, label: `💜 ${t.target.replace(/^name:/, '')}` });
+      });
+      return out;
+    }
+    const targetLabel = (k) => (trainTargets().find((o) => o.key === k) || { label: k }).label;
+
+    /* A throwaway companion record to test a girl against the live notes. */
+    function testCompanion(key) {
+      const S = window.GfStore;
+      const fresh = S.freshMemory ? S.freshMemory() : {};
+      const base = S.store?.companions?.[key];
+      if (base) return { ...base, memory: fresh, mood: testState.mood || base.mood, messages: testState.thread.slice() };
+      const P = C().byId(key);
+      if (P && S.companionFromPersonality) {
+        const c = S.companionFromPersonality(P, S.store?.account?.name || '');
+        return { ...c, memory: fresh, mood: testState.mood || c.mood, messages: testState.thread.slice() };
+      }
+      const nm = key.replace(/^name:/, '');
+      const pub = personas.find((p) => String(p.name).trim().toLowerCase() === nm);
+      const own = (S.list?.() || []).find((c) => String(c.name).trim().toLowerCase() === nm);
+      const src = own || (pub && { name: pub.name, emoji: pub.emoji, spec: pub.spec || {}, systemPrompt: pub.system_prompt || '' }) || { name: nm, spec: {} };
+      return {
+        id: 'test', personaId: null, custom: true,
+        name: src.name, emoji: src.emoji || '💜', spec: src.spec || {}, systemPrompt: src.systemPrompt || '',
+        mood: testState.mood || C().DEFAULT_MOOD, memory: fresh, messages: testState.thread.slice(),
+      };
+    }
+
+    function behaviourNow() {
+      return { ...(C().BEHAVIOUR_DEFAULTS || {}), ...((conf && conf.behaviour) || {}) };
+    }
+
+    function drawTrain() {
+      const body = document.getElementById('adbody');
+      if (!body) return;
+      const targets = trainTargets();
+      const opt = (sel) => targets.map((t) => `<option value="${esc(t.key)}" ${t.key === sel ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+      const testOpts = targets.filter((t) => t.key !== 'all');
+      if (!testOpts.some((t) => t.key === testState.target)) testState.target = (testOpts[0] || {}).key || 'romance.priya';
+      const k = KINDS[trainForm.kind];
+      const b = behaviourNow();
+
+      /* ---- the notes list, grouped by day ---- */
+      const shown = training.filter((t) => !trainFilter || t.target === trainFilter);
+      let lastDay = '';
+      const list = shown.map((t) => {
+        const d = new Date(t.created_at);
+        const day = isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' });
+        const mark = day !== lastDay ? `<div class="eyebrow" style="margin:16px 0 4px">${esc(day)}</div>` : '';
+        lastDay = day;
+        const kk = KINDS[t.kind] || KINDS.rule;
+        return `${mark}<div class="urow" style="${t.active ? '' : 'opacity:.5'}">
+          <div class="uav">${kk.emoji}</div>
+          <div class="grow">
+            <div class="ubadges">
+              <span class="abadge ${t.active ? 'good' : 'bad'}">${t.active ? 'On' : 'Off'}</span>
+              <span class="tag">${esc(kk.label)}</span>
+              <span class="tag">${esc(targetLabel(t.target))}</span>
+            </div>
+            ${t.kind === 'example'
+              ? `<div class="umeta" style="margin-top:6px"><strong>He:</strong> ${esc(t.prompt || '…')}<br><strong>She:</strong> ${esc(t.body)}</div>`
+              : `<div class="umeta" style="margin-top:6px;white-space:pre-wrap">${esc(t.body)}</div>`}
+          </div>
+          <div class="row row--tight">
+            <button class="btn btn--small btn--soft" data-ttog="${esc(t.id)}" data-on="${t.active ? '1' : '0'}">${t.active ? 'Turn off' : 'Turn on'}</button>
+            <button class="iconbtn iconbtn--danger" data-tdel="${esc(t.id)}" aria-label="Delete">✕</button>
+          </div>
+        </div>`;
+      }).join('') || '<div class="empty">Nothing taught yet. Add the first note above — she uses it from her very next message.</div>';
+
+      const activeCount = training.filter((t) => t.active).length;
+      const todayCount = training.filter((t) => new Date(t.created_at).toDateString() === new Date().toDateString()).length;
+
+      /* ---- the test thread ---- */
+      const thread = testState.thread.map((m) => `<div style="margin:6px 0;${m.role === 'user' ? 'text-align:right' : ''}">
+          <span class="tag" style="white-space:pre-wrap;text-align:left;${m.role === 'user' ? '' : 'background:var(--mint-100);color:var(--mint-ink)'}">${esc(m.content)}</span>
+        </div>`).join('');
+      const lastReply = [...testState.thread].reverse().find((m) => m.role === 'assistant');
+
+      const num = (id, label, val, hint) => `<div class="field">
+          <label for="${id}">${esc(label)}</label>
+          <input class="input" id="${id}" type="number" min="0" value="${Number(val)}">
+          ${hint ? `<span class="hint">${esc(hint)}</span>` : ''}
+        </div>`;
+      const sw = (id, label, on, hint) => `<div class="row row--between" style="margin:12px 0">
+          <div style="max-width:74%"><strong style="font-size:14px">${esc(label)}</strong>
+            ${hint ? `<p class="muted" style="margin:3px 0 0;font-size:12.5px">${esc(hint)}</p>` : ''}</div>
+          <button class="switch ${on ? 'on' : ''}" id="${id}" aria-label="${esc(label)}"></button>
+        </div>`;
+
+      body.innerHTML = `
+        <div class="grid">
+        <div class="card card--6">
+          <h2>Teach her something today</h2>
+          <p class="muted">Write it the way you'd tell a person. It reaches every user's app on their next
+            refresh and she uses it from her very next message. Newer notes win when two disagree.</p>
+
+          <div class="field" style="margin-top:14px">
+            <label for="tr-target">Who is this for</label>
+            <select class="select" id="tr-target">${opt(trainForm.target)}</select>
+          </div>
+
+          <div class="field">
+            <label>What kind of note</label>
+            <div class="seg" style="flex-wrap:wrap">${Object.entries(KINDS).map(([key, v]) =>
+              `<button type="button" class="${trainForm.kind === key ? 'on' : ''}" data-tkind="${key}">${v.emoji} ${esc(v.label)}</button>`).join('')}</div>
+          </div>
+
+          ${trainForm.kind === 'example' ? `
+            <div class="field">
+              <label for="tr-prompt">When he says…</label>
+              <input class="input" id="tr-prompt" placeholder="e.g. kya kar rahi ho" value="${esc(trainForm.prompt || '')}">
+            </div>
+            <div class="field">
+              <label for="tr-body">…she should reply like</label>
+              <textarea class="input textarea" id="tr-body" style="min-height:90px" placeholder="${esc(k.ph)}">${esc(trainForm.body || '')}</textarea>
+            </div>` : `
+            <div class="field">
+              <label for="tr-body">The note</label>
+              <textarea class="input textarea" id="tr-body" style="min-height:120px" placeholder="${esc(k.ph)}">${esc(trainForm.body || '')}</textarea>
+              <label class="hint" style="display:flex;gap:8px;align-items:center;font-weight:400">
+                <input type="checkbox" id="tr-perline" ${trainForm.perLine ? 'checked' : ''}> Each line is a separate note (paste a whole list at once)
+              </label>
+            </div>`}
+          <button class="btn btn--hot" id="tr-save">Teach her</button>
+          <p class="gate-msg" id="tr-msg"></p>
+        </div>
+
+        <div class="card card--6">
+          <h2>Test her live</h2>
+          <p class="muted">Chat with any girl using the current notes. Didn't like her reply? Write the
+            better one — it's saved as an example and she learns it.</p>
+          <div class="grid2" style="margin-top:14px">
+            <div class="field"><label for="ts-target">Girl</label>
+              <select class="select" id="ts-target">${testOpts.map((t) => `<option value="${esc(t.key)}" ${t.key === testState.target ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></div>
+            <div class="field"><label for="ts-mood">Mood</label>
+              <select class="select" id="ts-mood"><option value="">her current</option>${Object.entries(C().MOODS).map(([mk, m]) =>
+                `<option value="${mk}" ${testState.mood === mk ? 'selected' : ''}>${m.emoji} ${esc(m.label)}</option>`).join('')}</select></div>
+          </div>
+          <div style="max-height:280px;overflow:auto;margin:6px 0 12px">${thread || '<p class="muted" style="font-size:12.5px">Say something to start.</p>'}</div>
+          <div class="row row--tight">
+            <input class="input grow" id="ts-msg" placeholder="type as the user…" ${testState.busy ? 'disabled' : ''}>
+            <button class="btn" id="ts-send" ${testState.busy ? 'disabled' : ''}>${testState.busy ? '…' : 'Send'}</button>
+          </div>
+          <div class="btnrow" style="margin-top:10px">
+            <button class="btn btn--soft" id="ts-nudge" ${testState.busy ? 'disabled' : ''}>Let her text first</button>
+            <button class="btn btn--soft" id="ts-again" ${lastReply && !testState.busy ? '' : 'disabled'}>Try again</button>
+            <button class="btn btn--soft" id="ts-reset">Clear</button>
+          </div>
+          ${lastReply ? `
+            <div class="field" style="margin-top:14px">
+              <label for="ts-better">Better reply she should have sent</label>
+              <textarea class="input textarea" id="ts-better" style="min-height:70px" placeholder="write it exactly how she should text it"></textarea>
+            </div>
+            <button class="btn btn--hot" id="ts-teach">Save as example 💬</button>` : ''}
+          <p class="gate-msg" id="ts-err"></p>
+        </div>
+
+        <div class="card card--6">
+          <h2>How she behaves on her own</h2>
+          <p class="muted">So she doesn't only answer. Applies to every user's app.</p>
+          ${sw('bh-proactive', 'She texts first', b.proactive, 'Sends a message on her own when he goes quiet, or has one waiting when he comes back.')}
+          <div class="grid2">
+            ${num('bh-idle', 'Text him after he is quiet for (minutes)', b.idleMin, 'Randomised a little each time.')}
+            ${num('bh-comeback', 'Message waiting if he was away (hours)', b.comebackHrs)}
+            ${num('bh-max', 'Max first-messages per girl per day', b.maxPerDay)}
+            ${num('bh-unans', 'Stop after this many unanswered', b.maxUnanswered)}
+            ${num('bh-qfrom', 'Quiet hours from (0–23)', b.quietFrom)}
+            ${num('bh-qto', 'Quiet hours until (0–23)', b.quietTo)}
+          </div>
+          ${sw('bh-double', 'Double texting', b.doubleText, 'Sometimes sends her reply as two separate messages, a moment apart.')}
+          ${sw('bh-read', 'Reading pause', b.readDelay, 'A short random pause before she starts typing.')}
+          ${sw('bh-init', 'Adds her own thing', b.initiative, 'Every reply brings something of hers — what she\'s doing, an opinion, a callback — instead of only answering.')}
+          <button class="btn" id="bh-save">Save behaviour</button>
+          <p class="gate-msg" id="cfg-msg"></p>
+        </div>
+
+        <div class="card card--6">
+          <h2>Snapshot</h2>
+          <div class="prow"><span class="pl">Active notes</span><span class="pv">${activeCount}</span></div>
+          <div class="prow"><span class="pl">Added today</span><span class="pv">${todayCount}</span></div>
+          <div class="prow"><span class="pl">Total ever</span><span class="pv">${training.length}</span></div>
+          <p class="muted" style="font-size:12.5px;margin-top:12px">Tip: a few sharp notes beat a long list.
+            Turn off anything that stops working instead of deleting it — you can bring it back.</p>
+          <button class="btn btn--soft btn--wide" id="tr-preview" style="margin-top:10px">See what ${esc(targetLabel(testState.target).replace(/^\S+\s/, '').split(' — ')[0])} reads</button>
+        </div>
+        </div>
+
+        <div class="card card--flat" style="margin-top:18px">
+          <div class="row row--between">
+            <h2>Everything she's been taught</h2>
+            <select class="select" id="tr-filter" style="max-width:260px">
+              <option value="">All targets</option>${targets.map((t) => `<option value="${esc(t.key)}" ${t.key === trainFilter ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}
+            </select>
+          </div>
+          ${list}
+        </div>`;
+
+      /* ---- wiring: the note form ---- */
+      const keepDraft = () => {
+        trainForm.target = document.getElementById('tr-target').value;
+        trainForm.body = document.getElementById('tr-body')?.value || '';
+        trainForm.prompt = document.getElementById('tr-prompt')?.value || '';
+        const pl = document.getElementById('tr-perline');
+        if (pl) trainForm.perLine = pl.checked;
+      };
+      $$('[data-tkind]').forEach((btn) => { btn.onclick = () => { keepDraft(); trainForm.kind = btn.dataset.tkind; drawTrain(); }; });
+
+      document.getElementById('tr-save').onclick = async (e) => {
+        keepDraft();
+        const msg = document.getElementById('tr-msg');
+        const text = String(trainForm.body || '').trim();
+        if (!text) { msg.textContent = 'Write the note first.'; return; }
+        let rows;
+        if (trainForm.kind === 'example') {
+          rows = [{ target: trainForm.target, kind: 'example', prompt: String(trainForm.prompt || '').trim(), body: text }];
+        } else {
+          const parts = trainForm.perLine ? text.split(/\n+/).map((l) => l.replace(/^\s*(?:[-•*]|\d+[.)])\s*/, '').trim()).filter(Boolean) : [text];
+          rows = parts.map((body) => ({ target: trainForm.target, kind: trainForm.kind, prompt: '', body }));
+        }
+        e.currentTarget.disabled = true;
+        try {
+          const { error } = await GfCloud.table('gf_training').insert(rows);
+          if (error) throw new Error(error.message);
+          trainForm.body = ''; trainForm.prompt = '';
+          await loadTraining();
+          try { await GfAccess.syncConfig(); } catch (_) {}
+          toast(rows.length > 1 ? `Taught ${rows.length} things 🧠` : 'Taught 🧠');
+          drawTrain();
+        } catch (err) {
+          msg.textContent = /does not exist|schema cache/i.test(err.message)
+            ? 'The training table is missing — run sql/UPGRADE-training.sql in Supabase first.'
+            : err.message;
+          e.currentTarget.disabled = false;
+        }
+      };
+
+      document.getElementById('tr-filter').onchange = (e) => { trainFilter = e.target.value; drawTrain(); };
+
+      $$('[data-ttog]').forEach((btn) => {
+        btn.onclick = async () => {
+          const on = btn.dataset.on === '1';
+          const { error } = await GfCloud.table('gf_training').update({ active: !on }).eq('id', btn.dataset.ttog);
+          if (error) { toast(error.message); return; }
+          await loadTraining(); try { await GfAccess.syncConfig(); } catch (_) {}
+          drawTrain();
+        };
+      });
+      $$('[data-tdel]').forEach((btn) => {
+        btn.onclick = () => GfUI.confirm({
+          title: 'Delete this note?',
+          body: 'She stops using it straight away. (Turning it off instead keeps it for later.)',
+          confirmText: 'Delete',
+          onConfirm: async () => {
+            const { error } = await GfCloud.table('gf_training').delete().eq('id', btn.dataset.tdel);
+            if (error) { toast(error.message); return; }
+            await loadTraining(); try { await GfAccess.syncConfig(); } catch (_) {}
+            drawTrain();
+          },
+        });
+      });
+
+      /* ---- wiring: the tester ---- */
+      const errBox = document.getElementById('ts-err');
+      const runTest = async (kind) => {
+        if (!window.GfApi.ready()) { errBox.textContent = 'No AI key loaded — add one in 🔑 AI Keys first.'; return; }
+        testState.busy = true; drawTrain();
+        try {
+          const c = testCompanion(testState.target);
+          const reply = kind === 'nudge'
+            ? await window.GfApi.initiate(c, testState.thread.length ? 'idle' : 'comeback', testState.thread.length ? 25 : 6)
+            : await window.GfApi.callModel(window.GfApi.buildMessages(c), { stream: false, temperature: 0.95, max_tokens: 400 });
+          testState.thread.push({ role: 'assistant', content: String(reply).trim(), at: Date.now() });
+        } catch (err) {
+          testState.busy = false; drawTrain();
+          const box = document.getElementById('ts-err'); if (box) box.textContent = err.message;
+          return;
+        }
+        testState.busy = false; drawTrain();
+        document.getElementById('ts-msg')?.focus();
+      };
+
+      document.getElementById('ts-target').onchange = (e) => { testState.target = e.target.value; testState.thread = []; drawTrain(); };
+      document.getElementById('ts-mood').onchange = (e) => { testState.mood = e.target.value; };
+      const sendTest = () => {
+        const v = document.getElementById('ts-msg').value.trim();
+        if (!v || testState.busy) return;
+        testState.thread.push({ role: 'user', content: v, at: Date.now() });
+        runTest('reply');
+      };
+      document.getElementById('ts-send').onclick = sendTest;
+      document.getElementById('ts-msg').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendTest(); } };
+      document.getElementById('ts-nudge').onclick = () => runTest('nudge');
+      document.getElementById('ts-reset').onclick = () => { testState.thread = []; drawTrain(); };
+      const again = document.getElementById('ts-again');
+      if (again) again.onclick = () => {
+        const i = testState.thread.map((m) => m.role).lastIndexOf('assistant');
+        if (i < 0) return;
+        const wasNudge = i === 0 || testState.thread[i - 1].role !== 'user';
+        testState.thread.splice(i, 1);
+        runTest(wasNudge ? 'nudge' : 'reply');
+      };
+      const teach = document.getElementById('ts-teach');
+      if (teach) teach.onclick = async () => {
+        const better = document.getElementById('ts-better').value.trim();
+        if (!better) { errBox.textContent = 'Write the better reply first.'; return; }
+        const i = testState.thread.map((m) => m.role).lastIndexOf('assistant');
+        const prev = testState.thread.slice(0, i).reverse().find((m) => m.role === 'user');
+        const { error } = await GfCloud.table('gf_training').insert({
+          target: testState.target, kind: 'example', prompt: prev ? prev.content : '(she texts first)', body: better,
+        });
+        if (error) { errBox.textContent = error.message; return; }
+        testState.thread[i] = { ...testState.thread[i], content: better };
+        await loadTraining(); try { await GfAccess.syncConfig(); } catch (_) {}
+        toast('Saved as an example 💬');
+        drawTrain();
+      };
+
+      document.getElementById('tr-preview').onclick = () => {
+        const c = testCompanion(testState.target);
+        const block = window.GfApi.trainingBlock(c).trim() || 'No notes apply to her yet.';
+        GfUI.modal('What she reads from your notes',
+          `<pre style="white-space:pre-wrap;font:12.5px/1.55 var(--mono,monospace);max-height:60vh;overflow:auto">${esc(block)}</pre>`);
+      };
+
+      /* ---- wiring: behaviour ---- */
+      ['bh-proactive', 'bh-double', 'bh-read', 'bh-init'].forEach((id) => {
+        document.getElementById(id).onclick = (e) => e.currentTarget.classList.toggle('on');
+      });
+      document.getElementById('bh-save').onclick = () => {
+        const n = (id, lo, hi) => Math.min(hi, Math.max(lo, parseInt(document.getElementById(id).value, 10) || 0));
+        const on = (id) => document.getElementById(id).classList.contains('on');
+        const next = {
+          proactive: on('bh-proactive'),
+          idleMin: n('bh-idle', 1, 1440),
+          comebackHrs: n('bh-comeback', 1, 168),
+          maxPerDay: n('bh-max', 0, 50),
+          maxUnanswered: n('bh-unans', 1, 10),
+          quietFrom: n('bh-qfrom', 0, 23),
+          quietTo: n('bh-qto', 0, 23),
+          doubleText: on('bh-double'),
+          readDelay: on('bh-read'),
+          initiative: on('bh-init'),
+        };
+        saveConf({ behaviour: next }, 'Behaviour saved').then((ok) => { if (ok) drawTrain(); });
+      };
     }
 
     /* ---------- Config ---------- */

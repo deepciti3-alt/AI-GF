@@ -100,10 +100,93 @@
       sp += `\n\n[SAFE MODE] Keep everything at a flirty maximum. No explicit content in this session.`;
     }
 
+    sp += trainingBlock(c);
+    sp += behaviourBlock();
+
     sp += `\n\nLength: one to three short lines. No essays, no bullet points, no headings.`;
     // injected last so the freshest instruction is exactly how to sound now
     sp += `\n\n${ov('mood:' + mood, C.MOOD_DIRECTIVE[mood] || C.MOOD_DIRECTIVE[C.DEFAULT_MOOD])}`;
     return sp;
+  }
+
+  /* ============================================================
+     1b · TRAINING — the admin's daily notes (admin → 🧠 Train)
+     ------------------------------------------------------------
+     Arrives with gf_get_config as window.GfTraining.
+     A note targets 'all', a built-in id, or 'name:<lowercase>'.
+     Newest notes win when two disagree, so they go in oldest→newest
+     and the block says so.
+     ============================================================ */
+
+  const TRAIN_CAP = { rule: 40, avoid: 30, style: 20, fact: 30, example: 14 };
+
+  function trainingKeyFor(c) {
+    return c.personaId || ('name:' + String(c.name || '').trim().toLowerCase());
+  }
+
+  function trainingFor(c) {
+    const all = Array.isArray(window.GfTraining) ? window.GfTraining : [];
+    const name = 'name:' + String(c.name || '').trim().toLowerCase();
+    return all.filter((t) => t && t.body && (
+      t.target === 'all' || t.target === c.personaId || t.target === name));
+  }
+
+  function trainingBlock(c) {
+    const notes = trainingFor(c);
+    if (!notes.length) return '';
+    const pick = (kind) => notes.filter((t) => t.kind === kind).slice(-TRAIN_CAP[kind]);
+    const line = (t) => `• ${String(t.body).trim()}`;
+    const her = '{name}';
+    const parts = [];
+
+    const rules = pick('rule');
+    const avoid = pick('avoid');
+    const style = pick('style');
+    const facts = pick('fact');
+    const examples = pick('example');
+
+    if (rules.length) parts.push(`DO:\n${rules.map(line).join('\n')}`);
+    if (avoid.length) parts.push(`NEVER:\n${avoid.map(line).join('\n')}`);
+    if (style.length) parts.push(`HOW YOU TEXT:\n${style.map(line).join('\n')}`);
+    if (facts.length) parts.push(`ABOUT YOU (your life — use naturally, never recite):\n${facts.map(line).join('\n')}`);
+    if (examples.length) {
+      parts.push(`REPLIES YOUR TRAINER LOVED (copy the energy and style, never the exact words):\n`
+        + examples.map((t) => `He: ${String(t.prompt || '…').trim()}\nYou: ${String(t.body).trim()}`).join('\n\n'));
+    }
+
+    return `\n\n═══ TRAINING NOTES (from the person who shapes you — these override the defaults above; if two notes disagree, the later one wins) ═══\n`
+      + parts.join('\n\n').replace(/\{name\}/g, c.name || her);
+  }
+
+  /* The fix for "she only answers": a standing instruction to bring
+     something of her own to every reply. Admin can switch it off. */
+  function behaviourBlock() {
+    const b = { ...(C.BEHAVIOUR_DEFAULTS || {}), ...(window.GfBehaviour || {}) };
+    if (b.initiative === false) return '';
+    return `\n\n═══ DON'T JUST ANSWER ═══
+A real girlfriend never only replies to the question. In most replies add ONE thing of your own: what you're doing right now, a small opinion, a callback to something he said earlier, a tease, or a question back. Vary it — sometimes a single word or emoji, sometimes two quick lines. Never start two replies in a row the same way. Never sound like customer support.`;
+  }
+
+  /* Her texting FIRST — he hasn't said anything. kind:
+       idle      he went quiet mid-conversation
+       comeback  he just opened the app after hours away
+       morning / night   time-of-day check-in                     */
+  const NUDGE = {
+    idle: (mins) => `He hasn't replied for about ${mins} minutes. Text him first, like a real girlfriend would — maybe poke him for going quiet, share something random you're doing, or continue the last topic. Do not ask "are you there?" twice in a row.`,
+    comeback: (hrs) => `He's been away for about ${hrs} hours and hasn't texted. Send the first message — you missed him, or you're curious what he was up to, or something happened in your day you want to tell him. Make it specific, not generic.`,
+    morning: () => `It's morning and you're texting him first. A natural good-morning — not a greeting card. Something about your morning, or what he has on today.`,
+    night: () => `It's late and you're texting him first before sleeping. Natural and short — not a greeting card.`,
+  };
+
+  function initiate(companion, kind = 'idle', arg = 0, { signal } = {}) {
+    const c = companion || window.GfStore.active();
+    const msgs = buildMessages(c).filter((m, i, a) => !(i === a.length - 1 && /He is being firm/.test(m.content)));
+    const brief = (NUDGE[kind] || NUDGE.idle)(arg);
+    msgs.push({
+      role: 'user',
+      content: `[NOTE FROM THE APP — not a message from him, never mention it] ${brief} One or two short lines, in character, current mood. Reply with only her text.`,
+    });
+    return callModel(msgs, { signal, stream: false, temperature: 1, max_tokens: 200 });
   }
 
   /* Time of day costs nothing and makes her feel present. */
@@ -670,6 +753,7 @@
   window.GfApi = {
     buildSystemPrompt, buildMessages, personaPromptFor,
     callModel, chat, textTask, parseJsonObject,
+    initiate, trainingFor, trainingKeyFor, trainingBlock,
     listModels, pickBestModel, testKey,
     generateImage, imageAvailable,
     setActiveKey, useProvider, hasProvider, currentKey, ready, cloudManaged,
