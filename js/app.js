@@ -2150,6 +2150,30 @@
     window.visualViewport.addEventListener('scroll', reflowChat);
   }
 
+  /* While the phone keyboard is up, strip the chat down to messages + input
+     (WhatsApp style): hide the bottom nav, the mood chips, the quick
+     replies and the trial strip so the conversation gets the whole screen.
+     Toggled by focus on the composer; the blur check is delayed so tapping
+     Send (which briefly moves focus) doesn't flicker it off. */
+  let kbBlurT = null;
+  document.addEventListener('focusin', (e) => {
+    if (e.target && e.target.id === 'composerInput') {
+      clearTimeout(kbBlurT);
+      document.body.classList.add('kb-open');
+      requestAnimationFrame(() => scrollDown(false));
+    }
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target && e.target.id === 'composerInput') {
+      clearTimeout(kbBlurT);
+      kbBlurT = setTimeout(() => {
+        if (document.activeElement?.id !== 'composerInput') {
+          document.body.classList.remove('kb-open');
+        }
+      }, 150);
+    }
+  });
+
   /* ============================================================
      BOOT
      ============================================================ */
