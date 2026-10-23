@@ -484,19 +484,35 @@ kbd{
    8 · COMPANION LIST / CARDS
    ============================================================ */
 
-.gf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:14px}
+/* A capped column count, NOT auto-fill: auto-fill kept minting empty
+   250px tracks to the right of the last card, which is what made the
+   page look lopsided and half-empty with only three companions. */
+.gf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
+@media (min-width:1080px){ .gf-grid{grid-template-columns:repeat(3,minmax(0,1fr))} }
 .gf-card{
-  background:var(--card);border:1px solid var(--hairline);border-radius:20px;padding:16px;
-  display:grid;gap:9px;align-content:start;position:relative;
-  transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s var(--ease);
+  background:var(--card);border:1px solid var(--hairline);border-radius:22px;padding:20px;
+  display:grid;gap:11px;align-content:start;position:relative;overflow:hidden;min-height:190px;
+  box-shadow:0 1px 0 var(--hairline);
+  transition:transform .22s var(--ease),box-shadow .22s var(--ease),border-color .22s var(--ease);
 }
-.gf-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-panel);border-color:var(--mint-300)}
+/* a hairline sheen along the top that warms up on hover */
+.gf-card::before{
+  content:"";position:absolute;inset:0 0 auto 0;height:3px;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--red) 50%,transparent),transparent);
+  opacity:0;transition:opacity .22s var(--ease);
+}
+.gf-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-float);border-color:color-mix(in srgb,var(--red) 30%,var(--hairline))}
+.gf-card:hover::before{opacity:1}
 .gf-card.is-active{border-color:var(--red);box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 22%,transparent)}
-.gf-card__top{display:flex;align-items:center;gap:11px}
-.gf-card__name{font-family:var(--f-display);font-weight:700;font-size:16px;line-height:1.15}
-.gf-card__kind{font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-.gf-card__tell{font-size:13px;color:var(--ink-2);font-style:italic;line-height:1.45;margin:0}
-.gf-card__row{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.gf-card__top{display:flex;align-items:center;gap:12px}
+.gf-card__name{font-family:var(--f-display);font-weight:700;font-size:17px;line-height:1.15;letter-spacing:-.01em}
+.gf-card__kind{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:2px}
+.gf-card__tell{font-size:13.5px;color:var(--ink-2);font-style:italic;line-height:1.5;margin:0;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.gf-card__row{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:2px}
+/* push the action row to the card's foot so every card's buttons line up */
+.gf-card > .row--tight{margin-top:4px}
+.gf-card .avatar--lg,.gf-card .avatar{box-shadow:0 6px 16px -10px rgba(11,31,58,.5)}
 
 .gf-row{
   display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;
@@ -786,4 +802,85 @@ html[data-skin="aurora"] .aurora::after{
 
 @media (min-width:1600px){
   .main{padding-left:64px;padding-right:64px}
+}
+
+/* ============================================================
+   14 · REFINEMENTS  (2026 pass — spacing, hierarchy, polish)
+   Overrides earlier rules by source order. Token-based, so both
+   skins and dark mode stay correct.
+   ============================================================ */
+
+/* a touch narrower keeps lines readable and kills the half-empty
+   right-hand void on sparse pages */
+.page{max-width:1060px}
+.main{padding:36px 44px 110px}
+
+/* --- page header: clearer type hierarchy, more air --- */
+.page-head{margin:6px 0 28px;gap:24px}
+.page-head h1{font-size:clamp(22px,2.3vw,30px);letter-spacing:-.028em;line-height:1.08}
+.page-head p{font-size:14px;line-height:1.6;margin-top:8px;max-width:58ch}
+.eyebrow{color:var(--red);letter-spacing:.13em}
+
+/* --- filter chips + search as one calm toolbar --- */
+.chips{gap:9px}
+.chip-btn{min-height:40px;font-size:13.5px}
+#companionSearch{min-height:44px}
+.page > .field{margin-bottom:4px}
+
+/* --- trial banner: softer, more premium --- */
+.trialstrip{
+  border-radius:18px;padding:13px 18px;margin-bottom:22px;font-weight:500;
+  box-shadow:0 10px 30px -22px rgba(11,31,58,.5);
+}
+
+/* --- chat: a composed, centred column --- */
+.session-top{
+  padding:14px 4px 14px;margin:0 auto 6px;gap:14px;max-width:860px;width:100%;
+  border-bottom:1px solid var(--hairline);
+}
+.session-top__name{font-size:17px}
+.console__dial{min-height:38px}
+
+.transcript{max-width:860px;padding-top:14px}
+.daymark span{background:var(--sheet);border:1px solid var(--hairline);color:var(--ink-2);font-weight:600}
+
+/* roomier, softer bubbles with a gentler tail */
+.msg{margin-bottom:18px}
+.msg__who{font-size:12px;font-weight:600;margin-bottom:7px}
+.msg--me .msg__body{
+  border-radius:22px 22px 6px 22px;padding:12px 16px;font-size:15.5px;
+  background:linear-gradient(135deg,var(--blue),var(--blue-2));
+  box-shadow:0 14px 30px -18px rgba(11,31,58,.6);
+}
+.msg--ai .msg__body{
+  border-radius:22px 22px 22px 6px;padding:13px 17px;font-size:15.5px;
+  box-shadow:0 12px 30px -22px rgba(11,31,58,.4);
+}
+
+/* --- composer: solid, elevated, with a fade so text scrolls under it cleanly --- */
+.composer-wrap{width:min(860px,calc(100vw - var(--rail) - 72px))}
+.composer-wrap::before{
+  content:"";position:absolute;left:-24px;right:-24px;bottom:-18px;top:-40px;z-index:-1;pointer-events:none;
+  background:linear-gradient(to top,var(--page) 42%,color-mix(in srgb,var(--page) 70%,transparent) 72%,transparent);
+}
+.moodbar{padding-bottom:12px}
+.moodbar .chip-btn{min-height:36px;font-size:13px}
+.composer{
+  border-radius:26px;padding:16px 18px 13px;
+  box-shadow:0 26px 60px -24px rgba(11,31,58,.55),0 2px 0 var(--hairline);
+}
+.composer textarea{font-size:16px}
+.composer:focus-within{border-color:color-mix(in srgb,var(--red) 36%,var(--hairline))}
+
+/* --- cards (dashboards/clone/settings) a bit softer --- */
+.card{border-radius:24px}
+
+/* --- settings / clone two-column stays tidy --- */
+.clone-grid{gap:22px}
+
+@media (max-width:980px){
+  .main{padding:16px 16px 132px}
+  .page{max-width:100%}
+  .session-top,.transcript{max-width:100%}
+  .composer-wrap{width:calc(100vw - 24px)}
 }
