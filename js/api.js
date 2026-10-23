@@ -58,7 +58,7 @@
         ov('core', C.CORE_RULES),
         ov('moods', C.MOOD_BLOCK),
         ov('language', C.LANGUAGE_BLOCK),
-        '{username} is your boyfriend. You are his, and he is yours.',
+        C.relationOf(c).line,
       ].join('\n\n');
     }
 
@@ -69,7 +69,7 @@
       ov('core', C.CORE_RULES),
       ov('moods', C.MOOD_BLOCK),
       ov('language', C.LANGUAGE_BLOCK),
-      '{username} is your boyfriend. You are his, and he is yours.',
+      C.relationOf(c).line,
     ].join('\n\n');
   }
 
@@ -96,16 +96,27 @@
     try { sp += window.GfMemory ? GfMemory.promptBlock(c) : ''; } catch (_) {}
     sp += liveBlock();
 
-    if (s.nsfw === false) {
-      sp += `\n\n[SAFE MODE] Keep everything at a flirty maximum. No explicit content in this session.`;
+    // Relationship boundary. A non-romantic clone (friend, sibling, mentor)
+    // must never flirt or go explicit, whatever mood is selected.
+    const rel = C.relationOf(c);
+    if (!rel.romantic) {
+      sp += `\n\n[RELATIONSHIP: ${rel.label}] ${rel.line.replace(/\{username\}/g, him)}`
+        + ` This is NOT a romantic or sexual relationship. Never flirt, never be seductive, never go explicit —`
+        + ` ignore any flirty, romantic or spicy mood and keep that warmth strictly platonic.`;
+    }
+
+    if (s.nsfw === false || !rel.romantic) {
+      sp += `\n\n[SAFE MODE] No explicit or sexual content in this session.`;
     }
 
     sp += trainingBlock(c);
     sp += behaviourBlock();
 
     sp += `\n\nLength: one to three short lines. No essays, no bullet points, no headings.`;
-    // injected last so the freshest instruction is exactly how to sound now
-    sp += `\n\n${ov('mood:' + mood, C.MOOD_DIRECTIVE[mood] || C.MOOD_DIRECTIVE[C.DEFAULT_MOOD])}`;
+    // injected last so the freshest instruction is exactly how to sound now.
+    // A non-romantic relation never gets a flirty/romantic/spicy directive.
+    const effMood = (!rel.romantic && /^(spicy|flirty|romantic)$/.test(mood)) ? 'chill' : mood;
+    sp += `\n\n${ov('mood:' + effMood, C.MOOD_DIRECTIVE[effMood] || C.MOOD_DIRECTIVE[C.DEFAULT_MOOD])}`;
     return sp;
   }
 
@@ -162,9 +173,18 @@
      something of her own to every reply. Admin can switch it off. */
   function behaviourBlock() {
     const b = { ...(C.BEHAVIOUR_DEFAULTS || {}), ...(window.GfBehaviour || {}) };
-    if (b.initiative === false) return '';
-    return `\n\n═══ DON'T JUST ANSWER ═══
+    let out = '';
+    if (b.initiative !== false) {
+      out += `\n\n═══ DON'T JUST ANSWER ═══
 A real girlfriend never only replies to the question. In most replies add ONE thing of your own: what you're doing right now, a small opinion, a callback to something he said earlier, a tease, or a question back. Vary it — sometimes a single word or emoji, sometimes two quick lines. Never start two replies in a row the same way. Never sound like customer support.`;
+    }
+    if (b.backchannel !== false) {
+      out += `\n\n═══ TEXT LIKE A REAL PERSON ═══
+You're on WhatsApp, not writing an answer. Match his energy and length — a one-line message gets a one-line reply, never a paragraph.
+• If he's clearly mid-thought — trailing off, listing things, telling a story across messages, or about to send more — DON'T give your full reply yet. Just drop a tiny acknowledgement ("hmm", "acha", "haan bol", "sun rahi hu", "phir?") so he knows you're listening, and let him finish. Give your real reply only once he's actually done.
+• Sometimes split a reply into two short messages instead of one (put each on its own line). Never more than two, and not every time.`;
+    }
+    return out;
   }
 
   /* Her texting FIRST — he hasn't said anything. kind:
@@ -381,7 +401,7 @@ A real girlfriend never only replies to the question. In most replies add ONE th
       if (k) h.Authorization = `Bearer ${k}`;
       if (provider.key === 'openrouter') {
         h['HTTP-Referer'] = location.origin;
-        h['X-Title'] = 'Aria OS';
+        h['X-Title'] = 'Aria AI';
       }
     }
     return h;

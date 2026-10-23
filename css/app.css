@@ -1,5 +1,5 @@
 /* ============================================================
-   Aria OS — stylesheet
+   Aria AI — stylesheet
    ------------------------------------------------------------
    The design system is lifted from the Advisor OS ("Assistant")
    app: same token names, same component classes, same rail +
@@ -53,24 +53,32 @@
      buttons like .btn--hot must not silently render invisible (white text
      on an unset/transparent background) -- so the real "brand" values are
      duplicated here as the safe default. */
-  --red:#C62828; --red-deep:#9E1C1C;
-  --blue:#0B1F3A; --blue-2:#12325B; --blue-3:#1C5BB8;
-  --orange:#EF7C1A; --orange-2:#F5A623;
+  --red:#F0356B; --red-deep:#CE2159;
+  --blue:#241A33; --blue-2:#34243F; --blue-3:#C13A77;
+  --orange:#FF8A5B; --orange-2:#FFB07A;
+
+  /* personality families — each companion card is tinted by hers */
+  --fam-romance:#FF4D7E; --fam-care:#9B7BE0; --fam-drive:#F7A23B; --fam-custom:#4FBF9A;
+  /* the signature warm bloom used behind hero + chat */
+  --bloom:radial-gradient(60% 60% at 20% 0%, color-mix(in srgb,var(--red) 22%,transparent), transparent 70%),
+          radial-gradient(50% 50% at 100% 20%, color-mix(in srgb,var(--orange) 20%,transparent), transparent 70%);
 }
 
 /* ---- the brand layer: GRIVAA navy + red. This is what renders. ---- */
+/* ---- the brand layer: warm "Dusk" — rose + ember on a blush light,
+       deep plum ink. This is what renders. ---- */
 html[data-skin="brand"]{
-  --red:#C62828; --red-deep:#9E1C1C;
-  --blue:#0B1F3A; --blue-2:#12325B; --blue-3:#1C5BB8;
-  --orange:#EF7C1A; --orange-2:#F5A623;
-  --ink:#141414; --ink-2:#4B5563; --ink-3:#8A93A0;
-  --page:#FFFFFF; --sheet:#F5F7FA; --card:#FFFFFF; --chip:#EEF1F6;
-  --hairline:rgba(11,31,58,.12);
-  --mint-100:#EAF1FB; --mint-200:#D6E4F6; --mint-300:#1C5BB8; --mint-ink:#0B1F3A;
-  --ok:#1C5BB8; --warn:#EF7C1A; --slip:#C62828; --safety:#1C5BB8;
-  --shadow-float:0 22px 60px -26px rgba(11,31,58,.30);
-  --shadow-panel:0 10px 30px -18px rgba(11,31,58,.20);
-  --glass:rgba(255,255,255,.82);
+  --red:#F0356B; --red-deep:#CE2159;
+  --blue:#241A33; --blue-2:#34243F; --blue-3:#C13A77;
+  --orange:#FF8A5B; --orange-2:#FFB07A;
+  --ink:#1C1322; --ink-2:#6B5F72; --ink-3:#A79BAE;
+  --page:#FFFBFC; --sheet:#FBF2F5; --card:#FFFFFF; --chip:#F6ECF1;
+  --hairline:rgba(40,20,48,.10);
+  --mint-100:#FCE9F0; --mint-200:#F8D6E3; --mint-300:#F0356B; --mint-ink:#8A1E45;
+  --ok:#3FA98A; --warn:#F7A23B; --slip:#F0356B; --safety:#9B7BE0;
+  --shadow-float:0 28px 70px -28px rgba(70,20,55,.38);
+  --shadow-panel:0 12px 34px -20px rgba(70,20,55,.24);
+  --glass:rgba(255,251,252,.78);
 }
 html[data-skin="aurora"]{
   --red:#E0446B; --red-deep:#B92E52;
@@ -79,16 +87,24 @@ html[data-skin="aurora"]{
 }
 
 /* ---- dark mode (works under both skins) ---- */
+/* ---- dark mode: a warm plum night, not cold black ---- */
 html[data-theme="dark"]{
-  --page:#0E0F12; --ink:#EDEDED; --ink-2:#A8AEB6; --ink-3:#6E757E;
-  --sheet:#14161A; --card:#151820; --chip:rgba(255,255,255,.08);
-  --hairline:rgba(255,255,255,.10);
-  --glass:rgba(255,255,255,.07);
-  --mint-100:#16233A; --mint-200:#1B2C48; --mint-300:#5B95E8; --mint-ink:#BBD4F7;
-  --shadow-float:0 24px 70px -22px rgba(0,0,0,.7);
-  --shadow-panel:0 8px 30px -12px rgba(0,0,0,.5);
-  --blue:#101827; --blue-2:#17243B;
+  --page:#120B18; --ink:#F4ECF4; --ink-2:#B6A6BC; --ink-3:#7A6B82;
+  --sheet:#1A1125; --card:#1F1530; --chip:rgba(255,255,255,.07);
+  --hairline:rgba(255,255,255,.09);
+  --glass:rgba(40,24,48,.55);
+  --mint-100:#2C1830; --mint-200:#3A1E3E; --mint-300:#FF5C8A; --mint-ink:#FFC4D7;
+  --shadow-float:0 28px 80px -24px rgba(0,0,0,.78);
+  --shadow-panel:0 10px 34px -14px rgba(0,0,0,.6);
+  --blue:#2A1C38; --blue-2:#3A2748;
 }
+/* the warm bloom sits behind everything, very faint */
+html[data-skin="brand"] body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:var(--bloom);opacity:.5;
+}
+html[data-skin="brand"][data-theme="dark"] body::before{opacity:.32}
+.app-shell,.gate-root{position:relative;z-index:1}
 
 /* ============================================================
    2 · RESET + BASE
@@ -484,19 +500,53 @@ kbd{
    8 · COMPANION LIST / CARDS
    ============================================================ */
 
-.gf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:14px}
+/* A capped column count, NOT auto-fill: auto-fill kept minting empty
+   250px tracks and left the page half-empty with only three companions. */
+.gf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:22px}
+@media (min-width:1080px){ .gf-grid{grid-template-columns:repeat(3,minmax(0,1fr))} }
+
+/* Each companion is a little PROFILE, tinted by her family, not a flat
+   SaaS card: a colour band, an avatar that rises onto it, and a line in
+   her own voice shown as a chat bubble. */
 .gf-card{
-  background:var(--card);border:1px solid var(--hairline);border-radius:20px;padding:16px;
-  display:grid;gap:9px;align-content:start;position:relative;
-  transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s var(--ease);
+  --fam:var(--fam-romance);
+  background:var(--card);border:1px solid var(--hairline);border-radius:24px;padding:0;
+  display:flex;flex-direction:column;position:relative;overflow:hidden;min-height:248px;
+  box-shadow:var(--shadow-panel);
+  transition:transform .24s var(--ease),box-shadow .24s var(--ease),border-color .24s var(--ease);
 }
-.gf-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-panel);border-color:var(--mint-300)}
-.gf-card.is-active{border-color:var(--red);box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 22%,transparent)}
-.gf-card__top{display:flex;align-items:center;gap:11px}
-.gf-card__name{font-family:var(--f-display);font-weight:700;font-size:16px;line-height:1.15}
-.gf-card__kind{font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-.gf-card__tell{font-size:13px;color:var(--ink-2);font-style:italic;line-height:1.45;margin:0}
-.gf-card__row{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.gf-card[data-family="care"]{--fam:var(--fam-care)}
+.gf-card[data-family="drive"]{--fam:var(--fam-drive)}
+.gf-card[data-family="custom"]{--fam:var(--fam-custom)}
+.gf-card__banner{
+  height:74px;
+  background:
+    radial-gradient(120% 140% at 85% -20%, color-mix(in srgb,var(--fam) 70%,#fff) 0%, transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb,var(--fam) 82%,#fff), color-mix(in srgb,var(--fam) 40%,var(--card)));
+}
+.gf-card__head{display:flex;align-items:flex-end;gap:12px;padding:0 18px;margin-top:-32px}
+.gf-card .avatar,.gf-card .avatar--lg{
+  width:62px;height:62px;border-radius:20px;font-size:26px;
+  border:3px solid var(--card);box-shadow:0 10px 22px -10px color-mix(in srgb,var(--fam) 60%,transparent);
+}
+.gf-card__id{min-width:0;flex:1;padding-bottom:3px}
+.gf-card__name{font-family:var(--f-display);font-weight:700;font-size:18px;line-height:1.1;letter-spacing:-.015em}
+.gf-card__kind{font-size:12px;color:var(--fam);font-weight:600;margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gf-card__tell{
+  margin:14px 18px 0;padding:11px 14px;line-height:1.5;font-size:13px;font-style:italic;color:var(--ink-2);
+  background:color-mix(in srgb,var(--fam) 7%,var(--sheet));
+  border:1px solid color-mix(in srgb,var(--fam) 16%,var(--hairline));
+  border-radius:14px 14px 14px 5px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+}
+.gf-card__row{display:flex;gap:6px;flex-wrap:wrap;padding:12px 18px 0}
+.gf-card__foot{margin-top:auto;display:flex;align-items:center;gap:8px;padding:14px 18px 16px}
+.gf-card__foot .btn--hot{flex:1}
+.gf-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-float);
+  border-color:color-mix(in srgb,var(--fam) 40%,var(--hairline))}
+.gf-card.is-active{border-color:var(--fam);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--fam) 40%,transparent),var(--shadow-panel)}
 
 .gf-row{
   display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;
@@ -786,4 +836,123 @@ html[data-skin="aurora"] .aurora::after{
 
 @media (min-width:1600px){
   .main{padding-left:64px;padding-right:64px}
+}
+
+/* ============================================================
+   14 · REFINEMENTS  (2026 pass — spacing, hierarchy, polish)
+   Overrides earlier rules by source order. Token-based, so both
+   skins and dark mode stay correct.
+   ============================================================ */
+
+/* a touch narrower keeps lines readable and kills the half-empty
+   right-hand void on sparse pages */
+.page{max-width:1060px}
+.main{padding:36px 44px 110px}
+
+/* --- page header: clearer type hierarchy, more air --- */
+.page-head{margin:6px 0 28px;gap:24px}
+.page-head h1{font-size:clamp(22px,2.3vw,30px);letter-spacing:-.028em;line-height:1.08}
+.page-head p{font-size:14px;line-height:1.6;margin-top:8px;max-width:58ch}
+/* detox the tracked-out ALL-CAPS eyebrow (a generated-page tell): a quiet
+   rose kicker with a leading tick, sentence case */
+.eyebrow{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--red);
+  display:inline-flex;align-items:center;gap:7px}
+.eyebrow::before{content:"";width:16px;height:2px;border-radius:2px;background:var(--red)}
+
+/* --- filter chips + search as one calm toolbar --- */
+.chips{gap:9px}
+.chip-btn{min-height:40px;font-size:13.5px}
+#companionSearch{min-height:44px}
+.page > .field{margin-bottom:4px}
+
+/* --- trial banner: softer, more premium --- */
+.trialstrip{
+  border-radius:18px;padding:13px 18px;margin-bottom:22px;font-weight:500;
+  box-shadow:0 10px 30px -22px rgba(11,31,58,.5);
+}
+
+/* --- chat: a composed, centred column --- */
+.session-top{
+  padding:14px 4px 14px;margin:0 auto 6px;gap:14px;max-width:860px;width:100%;
+  border-bottom:1px solid var(--hairline);
+}
+.session-top__name{font-size:17px}
+.console__dial{min-height:38px}
+
+.transcript{max-width:860px;padding-top:14px}
+.daymark span{background:var(--sheet);border:1px solid var(--hairline);color:var(--ink-2);font-weight:600}
+
+/* roomier, warmer bubbles — her reply tinted rose, yours a warm gradient */
+.msg{margin-bottom:18px}
+.msg__who{font-size:12px;font-weight:600;margin-bottom:7px}
+.msg--me .msg__body{
+  border-radius:22px 22px 6px 22px;padding:12px 16px;font-size:15.5px;color:#fff;
+  background:linear-gradient(135deg,var(--red),var(--red-deep));
+  box-shadow:0 16px 32px -18px color-mix(in srgb,var(--red) 70%,transparent);
+}
+.msg--ai .msg__body{
+  border-radius:22px 22px 22px 6px;padding:13px 17px;font-size:15.5px;
+  background:color-mix(in srgb,var(--red) 4%,var(--card));
+  border-color:color-mix(in srgb,var(--red) 12%,var(--hairline));
+  box-shadow:0 12px 30px -24px rgba(70,20,55,.5);
+}
+.msg__mark{border-radius:5px;clip-path:none;background:linear-gradient(135deg,var(--red),var(--orange))}
+
+/* --- composer: solid, elevated, with a fade so text scrolls under it cleanly --- */
+.composer-wrap{width:min(860px,calc(100vw - var(--rail) - 72px))}
+.composer-wrap::before{
+  content:"";position:absolute;left:-24px;right:-24px;bottom:-18px;top:-40px;z-index:-1;pointer-events:none;
+  background:linear-gradient(to top,var(--page) 42%,color-mix(in srgb,var(--page) 70%,transparent) 72%,transparent);
+}
+.moodbar{padding-bottom:12px}
+.moodbar .chip-btn{min-height:36px;font-size:13px}
+.composer{
+  border-radius:26px;padding:16px 18px 13px;
+  box-shadow:0 26px 60px -24px rgba(11,31,58,.55),0 2px 0 var(--hairline);
+}
+.composer textarea{font-size:16px}
+.composer:focus-within{border-color:color-mix(in srgb,var(--red) 36%,var(--hairline))}
+
+/* --- cards (dashboards/clone/settings) a bit softer --- */
+.card{border-radius:24px}
+
+/* --- settings / clone two-column stays tidy --- */
+.clone-grid{gap:22px}
+
+/* --- brand mark: a soft rose→ember heart --- */
+.brand__mark{background:linear-gradient(135deg,var(--red),var(--orange));
+  box-shadow:0 10px 22px -10px color-mix(in srgb,var(--red) 70%,transparent)}
+.nav__item.is-active{box-shadow:inset 3px 0 0 var(--red)}
+
+/* --- login / access screen: the first impression, made premium --- */
+.gate-root{
+  background:
+    radial-gradient(90% 70% at 15% 0%, color-mix(in srgb,var(--red) 55%,var(--blue)) 0%, transparent 55%),
+    radial-gradient(80% 70% at 100% 100%, color-mix(in srgb,var(--orange) 40%,var(--blue)) 0%, transparent 55%),
+    linear-gradient(155deg, var(--blue) 0%, #160D1E 60%, #210F1C 100%);
+}
+.gate-card{
+  border-radius:30px;padding:34px 30px;
+  background:color-mix(in srgb,#fff 10%,transparent);backdrop-filter:saturate(160%) blur(26px);
+  border:1px solid rgba(255,255,255,.22);
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.25);
+  color:#fff;
+}
+.gate-card h2{font-size:26px;letter-spacing:-.02em;color:#fff}
+.gate-card .muted,.gate-card .gate-msg,.gate-card label,.gate-card .user-chip__role{color:rgba(255,255,255,.72)!important}
+.gate-card .brand{color:#fff;font-size:22px;justify-content:center}
+.gate-card .input{
+  background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.22);color:#fff;
+}
+.gate-card .input::placeholder{color:rgba(255,255,255,.5)}
+.gate-card .input:focus{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.25)}
+.gate-card .phonefield__cc{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:rgba(255,255,255,.85)}
+.gate-card .btn--soft{background:rgba(255,255,255,.12);color:#fff}
+.gate-card .divider{background:rgba(255,255,255,.18)}
+
+@media (max-width:980px){
+  .main{padding:16px 16px 132px}
+  .page{max-width:100%}
+  .session-top,.transcript{max-width:100%}
+  .composer-wrap{width:calc(100vw - 24px)}
 }

@@ -1,4 +1,4 @@
-# Aria OS
+# Aria AI
 
 A private AI companion app you can hand to anyone.
 

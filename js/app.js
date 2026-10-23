@@ -47,6 +47,7 @@
     cloneSource: '',
     cloneParticipants: [],
     cloneHer: '',
+    cloneRelation: 'girlfriend',
     cloneBusy: false,
     cloneStatus: '',
     authMode: 'in',
@@ -62,7 +63,6 @@
     ['companions', 'Companions'],
     ['clone', 'Clone Lab'],
     ['memory', 'Memory'],
-    ['gallery', 'Gallery'],
     ['settings', 'Settings'],
   ];
   const MOBILE_NAV = [['chat', 'Chat'], ['companions', 'Companions'], ['clone', 'Clone Lab'], ['memory', 'Memory'], ['more', 'More']];
@@ -97,7 +97,7 @@
 
     return `<div class="app-shell">
       <aside class="rail">
-        <div class="brand"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         ${admin ? '' : `<button class="newchat" data-action="new-companion">${ICONS.plus} New companion</button>`}
         <nav class="nav" aria-label="Primary">${nav.map(([id, l]) => navButton(id, l)).join('')}</nav>
         <div class="rail__bottom">
@@ -123,7 +123,7 @@
       </aside>
 
       <header class="mobile-top">
-        <div class="brand"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         <div class="row row--tight">
           <button class="iconbtn" data-action="toggle-theme"
                   aria-label="${dark ? 'Switch to light mode' : 'Switch to dark mode'}">${dark ? ICONS.sun : ICONS.moon}</button>
@@ -213,7 +213,6 @@
           <div class="composer__row">
             <div class="composer__tools">
               <button type="button" class="iconbtn" data-action="voice-input" aria-label="Speak">${ICONS.mic}</button>
-              <button type="button" class="iconbtn" data-action="make-image" aria-label="Ask for a picture">${ICONS.image}</button>
               <button type="button" class="iconbtn" data-action="attach" aria-label="Attach a file">${ICONS.attach}</button>
             </div>
             ${sending
@@ -274,22 +273,24 @@
 
     const cards = filtered.map((c) => {
       const last = c.messages[c.messages.length - 1];
-      return `<article class="gf-card ${c.id === S.store.activeId ? 'is-active' : ''}" data-open="${esc(c.id)}">
-        <div class="gf-card__top">
+      const voice = c.spec?.tell || c.spec?.blurb || '';
+      return `<article class="gf-card ${c.id === S.store.activeId ? 'is-active' : ''}" data-family="${esc(c.family || 'romance')}" data-open="${esc(c.id)}">
+        <div class="gf-card__banner" aria-hidden="true"></div>
+        <div class="gf-card__head">
           ${avatar(c)}
-          <div style="min-width:0;flex:1">
+          <div class="gf-card__id">
             <div class="gf-card__name">${esc(c.name)}</div>
             <div class="gf-card__kind">${esc(c.spec?.label || 'Companion')}</div>
           </div>
           ${c.custom ? '<span class="pill pill--hot">yours</span>' : ''}
         </div>
-        <p class="gf-card__tell">${esc(c.spec?.tell || c.spec?.blurb || '')}</p>
+        ${voice ? `<p class="gf-card__tell">${esc(voice)}</p>` : ''}
         <div class="gf-card__row">
-          ${last ? `<span class="tag">${esc(GfUI.ago(last.at))} · ${c.messages.length} msgs</span>` : '<span class="tag">no chats yet</span>'}
+          ${last ? `<span class="tag">${esc(GfUI.ago(last.at))} · ${c.messages.length} msgs</span>` : '<span class="tag">new</span>'}
           ${c.clonedFrom ? '<span class="tag">🧬 cloned</span>' : ''}
         </div>
-        <div class="row row--tight" style="margin-top:6px">
-          <button class="btn btn--small" data-action="open-companion" data-id="${esc(c.id)}">Open chat</button>
+        <div class="gf-card__foot">
+          <button class="btn btn--small btn--hot" data-action="open-companion" data-id="${esc(c.id)}">Open chat</button>
           <button class="iconbtn" data-action="edit-companion" data-id="${esc(c.id)}" aria-label="Edit">${ICONS.refine}</button>
           <button class="iconbtn iconbtn--danger" data-action="del-companion" data-id="${esc(c.id)}" aria-label="Remove">${ICONS.trash}</button>
         </div>
@@ -402,6 +403,17 @@
           <div class="field">
             <label for="cloneName">Her name (optional)</label>
             <input class="input" id="cloneName" placeholder="leave blank and it reads the name out of the chat">
+          </div>
+
+          <div class="field">
+            <label>What is she to you?</label>
+            <div class="chips">
+              ${C.RELATIONS.map((r) => `
+                <button type="button" class="chip-btn ${U.cloneRelation === r.key ? 'is-active' : ''}" data-clonerel="${esc(r.key)}">
+                  ${r.emoji} ${esc(r.label)}
+                </button>`).join('')}
+            </div>
+            <span class="hint">Friend, sibling and mentor are kept strictly non-romantic — no flirting, no spicy, whatever mood is on.</span>
           </div>
 
           <div class="field">
@@ -737,7 +749,7 @@
     const up = mode === 'up';
     return `<div class="gate-root" style="position:relative;min-height:100vh">
       <section class="gate-card">
-        <div class="brand" style="padding:0 0 16px"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand" style="padding:0 0 16px"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         <h2>${up ? 'Make an account' : 'Welcome back'}</h2>
         <p class="muted" style="font-size:13px;margin:6px 0 20px">
           ${up
@@ -788,7 +800,7 @@
   function renderAgeGate() {
     return `<div class="gate-root" style="position:relative;min-height:100vh">
       <section class="gate-card">
-        <div class="brand" style="padding:0 0 14px"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand" style="padding:0 0 14px"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         <h2>Adults only</h2>
         <p class="muted" style="font-size:13.5px;line-height:1.6;margin:8px 0 20px">
           This is a private companion app for adults. Conversations here can be explicit.
@@ -924,7 +936,52 @@
     if (input && preset == null) { input.value = ''; delete draftState.composerInput; autoResize(); }
 
     S.pushMessage(c.id, 'user', text);
-    await requestReply(c);
+    if (page === 'chat') render();     // his message shows at once
+    scheduleReply(c);
+  }
+
+  /* ============================================================
+     NATURAL RHYTHM — wait for him to finish, backchannel while he types
+     ------------------------------------------------------------
+     Instead of replying the instant he hits send, she waits a beat. If
+     he fires off a second message she resets the wait and sometimes drops
+     a quick "hmm / acha" so he knows she's listening — then gives her real
+     reply once he's actually done.
+     ============================================================ */
+
+  let settleTimer = null;
+  let burst = { count: 0, acked: false };
+
+  const ackLine = () => {
+    const list = (C.BACKCHANNELS && C.BACKCHANNELS.length) ? C.BACKCHANNELS : ['hmm'];
+    return list[Math.floor(Math.random() * list.length)];
+  };
+
+  function scheduleReply(c) {
+    const b = behaviour();
+    if (b.backchannel === false) { requestReply(c); return; }
+    // she's already replying — her tail check will pick up new messages
+    if (sending) return;
+
+    burst.count++;
+    clearTimeout(settleTimer);
+
+    // a tiny "hmm / acha" while he's clearly still mid-thought
+    if (burst.count >= 2 && !burst.acked && Math.random() < 0.6) {
+      burst.acked = true;
+      setTimeout(() => {
+        if (!sending && settleTimer) {
+          S.pushMessage(c.id, 'assistant', ackLine(), { mood: c.mood, cont: true, ack: true });
+          if (page === 'chat') render();
+        }
+      }, 450 + Math.random() * 600);
+    }
+
+    settleTimer = setTimeout(() => {
+      settleTimer = null;
+      burst = { count: 0, acked: false };
+      requestReply(c);
+    }, 850 + Math.random() * 650);
   }
 
   /* Ask her for a reply to whatever the conversation currently is. Used by
@@ -946,7 +1003,7 @@
     render();
 
     // decided up front so a split reply streams only its first bubble
-    const splitPlan = !!b.doubleText && Math.random() < 0.55;
+    const splitPlan = !!b.doubleText && Math.random() < 0.45;
     const firstPart = (t) => (splitPlan ? String(t).split(/\n+/)[0] : t);
 
     abortCtl = new AbortController();
@@ -982,6 +1039,12 @@
     GfMemory.maybeExtract(c).then((r) => {
       if (r && r.added) render();
     }).catch(() => {});
+
+    // he kept texting while she was replying — answer the newer messages too
+    const tail = c.messages[c.messages.length - 1];
+    if (tail && tail.role === 'user' && behaviour().backchannel !== false) {
+      scheduleReply(c);
+    }
   }
 
   /* ============================================================
@@ -998,8 +1061,10 @@
 
   /* One reply, sometimes as two or three bubbles a moment apart. */
   async function deliver(c, text, extra = {}, split = false) {
-    const lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
-    const doSplit = split && lines.length > 1 && lines.length <= 4 && !/```|^\s*[-*•]\s/m.test(text);
+    let lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    // never more than two bubbles — fold any extra into the second
+    if (lines.length > 2) lines = [lines[0], lines.slice(1).join(' ')];
+    const doSplit = split && lines.length === 2 && !/```|^\s*[-*•]\s/m.test(text);
     if (!doSplit) {
       S.pushMessage(c.id, 'assistant', text, { mood: c.mood, ...extra });
       if (page === 'chat') render();
@@ -1271,7 +1336,7 @@
   }
 
   function openMorePicker() {
-    const extra = [['gallery', 'Gallery'], ['settings', 'Settings']]
+    const extra = [['settings', 'Settings']]
       .concat(isAdminUser() ? [['admin', 'Admin']] : []);
     picker('More', extra.map(([id, label], i) => ({
       value: 'nav:' + id, label, index: i + 1, selected: page === id,
@@ -1433,6 +1498,7 @@
       const { companion } = await GfClone.build({
         name, source, note,
         herName: U.cloneHer,
+        relation: U.cloneRelation,
         emoji: '🧬',
         onStatus: (m) => {
           U.cloneStatus = m;
@@ -1527,6 +1593,9 @@
     const her = event.target.closest('[data-cloneher]');
     if (her) { U.cloneHer = her.dataset.cloneher; render(); return; }
 
+    const rel = event.target.closest('[data-clonerel]');
+    if (rel) { U.cloneRelation = rel.dataset.clonerel; render(); return; }
+
     const am = event.target.closest('[data-authmode]');
     if (am) { U.authMode = am.dataset.authmode; render(); return; }
 
@@ -1571,7 +1640,6 @@
         case 'scroll-down': scrollDown(); break;
         case 'stop': window.GfApi.stop(); abortCtl?.abort(); break;
         case 'voice-input': toggleVoice(); break;
-        case 'make-image': askForImage(); break;
         case 'attach': $('#fileInput').click(); break;
 
         case 'copy-msg': {
@@ -1744,7 +1812,7 @@
           const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
           const a3 = document.createElement('a');
           a3.href = URL.createObjectURL(blob);
-          a3.download = `aria-os-backup-${GfUI.dateKey()}.json`;
+          a3.download = `aria-ai-backup-${GfUI.dateKey()}.json`;
           a3.click();
           setTimeout(() => URL.revokeObjectURL(a3.href), 1000);
           toast('Backup saved (keys left out on purpose)');
@@ -1993,30 +2061,44 @@
      BOOT
      ============================================================ */
 
+  let handledUid = null;       // the user whose sign-in we are running / have run
+
   async function onCloudAuth(user) {
     if (user) {
-      const phone = GfCloud.emailToPhone(user.email);
-      S.open(user.email, user.user_metadata?.name || '', phone);
-      S.store.account.cloud = true;
-      S.store.account.phone = phone;
-      await refreshAccess(user.user_metadata?.name);
-      const remote = await GfCloud.pull().catch(() => null);
-      if (remote && remote.companions && Object.keys(remote.companions).length) {
-        // remote wins only when this device has nothing yet
-        const localMsgs = S.list().reduce((n, c) => n + c.messages.length, 0);
-        if (!localMsgs) {
-          try { S.importAll({ product: 'Aria OS', data: remote }); } catch (_) {}
+      // boot() and the INITIAL_SESSION / SIGNED_IN events all arrive here for the
+      // same login. Run the heavy path once per user, not three times.
+      if (handledUid === user.id) return;
+      handledUid = user.id;
+      try {
+        const phone = GfCloud.emailToPhone(user.email);
+        S.open(user.email, user.user_metadata?.name || '', phone);
+        S.store.account.cloud = true;
+        S.store.account.phone = phone;
+        await refreshAccess(user.user_metadata?.name);
+        const remote = await GfCloud.pull().catch(() => null);
+        if (remote && remote.companions && Object.keys(remote.companions).length) {
+          // remote wins only when this device has nothing yet
+          const localMsgs = S.list().reduce((n, c) => n + c.messages.length, 0);
+          if (!localMsgs) {
+            try { S.importAll({ product: 'Aria OS', data: remote }); } catch (_) {}
+          }
         }
+        // Identity always comes from the live auth session, never from a
+        // synced/imported data blob — reassert in case anything upstream
+        // touched it.
+        S.store.account.cloud = true;
+        S.store.account.phone = phone;
+        if (isAdminUser()) page = 'admin';
+      } catch (e) {
+        // never leave the person staring at a dead login screen
+        console.warn('sign-in setup failed', e);
+        handledUid = null;
+        toast(e.message || 'Signed in, but loading your data failed. Reload to retry.');
       }
-      // Identity always comes from the live auth session, never from a
-      // synced/imported data blob — reassert in case anything upstream
-      // touched it.
-      S.store.account.cloud = true;
-      S.store.account.phone = phone;
-      if (isAdminUser()) page = 'admin';
       booted = true;
       render();
     } else {
+      handledUid = null;
       window.GfKeys = [];
       window.GfKey = { v: '' };
       GfAccess.set(null);
@@ -2049,6 +2131,8 @@
       if (u) { await onCloudAuth(u); }
       else { booted = true; render(); }
       GfAccess.startWatch();
+      // if the library was slow, init finishes after first paint — onAuthStateChange
+      // then delivers the restored session through onCloudAuth, so nothing is lost.
     } else {
       S.open('local', '');
       booted = true;

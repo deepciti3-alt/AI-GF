@@ -1,5 +1,5 @@
 -- ============================================================
---  Aria OS — complete Supabase schema
+--  Aria AI — complete Supabase schema
 -- ------------------------------------------------------------
 --  Run this ONCE, whole, in the Supabase SQL editor.
 --  It is idempotent: running it again is safe and changes nothing.
@@ -114,9 +114,15 @@ drop policy if exists "profiles insert" on public.gf_profiles;
 drop policy if exists "profiles update" on public.gf_profiles;
 drop policy if exists "profiles delete" on public.gf_profiles;
 
+-- Users may READ their own row. They can never write it directly:
+--   * a user-side INSERT could create their own row with status='active'
+--     (free lifetime access) before gf_bootstrap ever ran;
+--   * a user-side UPDATE could rewrite their own email to an admin's address.
+-- Profiles are created by gf_bootstrap() and changed by the admin RPCs, which
+-- are SECURITY DEFINER and bypass RLS. The app never writes this table directly.
 create policy "profiles read"   on public.gf_profiles for select using ( auth.uid() = user_id or public.gf_is_admin() );
-create policy "profiles insert" on public.gf_profiles for insert with check ( auth.uid() = user_id or public.gf_is_admin() );
-create policy "profiles update" on public.gf_profiles for update using ( auth.uid() = user_id or public.gf_is_admin() );
+create policy "profiles insert" on public.gf_profiles for insert with check ( public.gf_is_admin() );
+create policy "profiles update" on public.gf_profiles for update using ( public.gf_is_admin() ) with check ( public.gf_is_admin() );
 create policy "profiles delete" on public.gf_profiles for delete using ( public.gf_is_admin() );
 
 -- The key defence. A user may update their own row (name, note) but the
@@ -136,6 +142,7 @@ begin
     new.created_at    := old.created_at;
     new.user_id       := old.user_id;
     new.phone         := old.phone;
+    new.email         := old.email;     -- gf_has_access() trusts this column
   end if;
   return new;
 end $$;

@@ -26,6 +26,8 @@ Skip it entirely if you only want the app on your own machine — it runs perfec
 
 ## 3 · Set the admin mobile number
 
+> **Existing install?** Also run `sql/UPGRADE-security.sql` once. It closes a hole where a user could give themselves free lifetime access.
+
 Open `sql/SCHEMA.sql` and set it near the top. Note the `@ariaos.app` suffix — that's the internal address the number maps to:
 
 ```sql
@@ -109,6 +111,7 @@ From then on anyone who signs up gets a free trial (length is in **⚙️ Config
 | `Wrong number or password.` | Exactly that. Numbers are normalised, so `+91`, a leading `0` and a bare 10-digit number are all the same. |
 | `That number already has an account` | Sign in rather than sign up. As admin you can reset their access, though not their password — have them use **Settings → Change password** once they're in. |
 | `Could not find the function ... in the schema cache` | The schema ran but PostgREST hasn't noticed. Run `notify pgrst, 'reload schema';`. |
+| "The server rejected the login address for this number" | Supabase refused the internal `<number>@ariaos.app` address. Check **Authentication → Providers → Email** is enabled and **Confirm email** is off. If it still happens, the domain check on your project is rejecting `ariaos.app` — in that case set a custom SMTP / disable email domain validation in Auth settings, or change `PHONE_DOMAIN` in `js/supabase.js` **and** every `@ariaos.app` entry in `sql/SCHEMA.sql` together. |
 | `Admins only.` | The number you signed in with isn't in `gf_admin_emails()`. It must be there as `<digits>@ariaos.app`. |
 | Everything times out | The project is paused — the free tier sleeps after 7 idle days. Open the dashboard and it wakes. |
 | A user says the AI stopped | Check **🔑 AI Keys**. If their access lapsed, the server stops handing them a key on purpose — that's the paywall working. |

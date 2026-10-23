@@ -303,13 +303,14 @@
 
   /* Create a companion from an arbitrary spec — used by the Clone Lab and
      by "make your own" in the Companions page. */
-  function createCompanion({ name, emoji, family, spec, systemPrompt, clonedFrom, avatarImg }) {
+  function createCompanion({ name, emoji, family, spec, systemPrompt, clonedFrom, avatarImg, relation }) {
     const st = S.store;
     const id = uid('gf');
     st.companions[id] = {
       id,
       personaId: null,
       family: family || 'romance',
+      relation: relation || 'girlfriend',
       name: String(name || 'Her').slice(0, 40),
       emoji: emoji || '💜',
       avatarImg: avatarImg || '',
@@ -425,7 +426,7 @@
       clone.settings.geminiKey = '';
     }
     return {
-      product: 'Aria OS',
+      product: 'Aria OS',   // internal id, kept so old backups still import
       exportVersion: 1,
       exportedAt: new Date().toISOString(),
       includesKeys: !!includeKeys,
@@ -436,7 +437,7 @@
 
   function importAll(payload) {
     if (!payload || payload.product !== 'Aria OS') {
-      throw new Error('That is not an Aria OS backup file.');
+      throw new Error('That is not an Aria AI backup file.');
     }
     // Account identity (email/phone/cloud/name) always comes from the live
     // auth session/device — never from an imported data blob, which may be

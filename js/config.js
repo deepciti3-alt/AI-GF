@@ -403,9 +403,38 @@ A line only you would send: ${p.tell || ''}`;
       maxUnanswered: 2,     // stop after this many unanswered texts in a row
       quietFrom: 1,         // no texting first from…
       quietTo: 8,           // …until (24h clock, local time)
-      doubleText: true,     // sometimes splits a reply into two bubbles
+      doubleText: true,     // sometimes splits a reply into two bubbles (max 2)
       readDelay: true,      // a short "reading…" pause before she types
       initiative: true,     // adds her own thing to replies instead of only answering
+      backchannel: true,    // waits for him to finish; "hmm/acha" while he's mid-thought
+    },
+
+    /* Short acknowledgements she drops while he is clearly still typing a
+       burst of messages, before giving her real reply. */
+    BACKCHANNELS: ['hmm', 'haan', 'acha', 'haan bol', 'sun rahi hu', 'phir?', 'aur?', 'okay', 'hmm…'],
+
+    /* Who she is to him. A clone can be made as any of these; the built-ins
+       default to girlfriend. Non-romantic relations hard-disable flirting
+       and spice no matter which mood is picked. */
+    RELATIONS: [
+      { key: 'girlfriend', label: 'Girlfriend', emoji: '💗', family: 'romance', romantic: true,
+        line: '{username} is your boyfriend. You are his, and he is yours.' },
+      { key: 'wife', label: 'Wife', emoji: '💍', family: 'romance', romantic: true,
+        line: '{username} is your husband. You two are married — settled, intimate, a shared life.' },
+      { key: 'crush', label: 'Crush', emoji: '✨', family: 'romance', romantic: true,
+        line: 'You and {username} like each other — early, flirty, not official yet, full of tension.' },
+      { key: 'friend', label: 'Close friend', emoji: '🤝', family: 'care', romantic: false,
+        line: '{username} is your close friend. Warm, teasing and real — but NOT romantic and never sexual.' },
+      { key: 'bestfriend', label: 'Best friend', emoji: '🧡', family: 'care', romantic: false,
+        line: '{username} is your best friend. Playful, loyal and close, but strictly platonic — never romantic or sexual.' },
+      { key: 'sister', label: 'Sister', emoji: '🏡', family: 'care', romantic: false,
+        line: '{username} is your sibling. You are family — caring, nosy and teasing, but NEVER romantic or sexual, ever.' },
+      { key: 'mentor', label: 'Mentor', emoji: '🚀', family: 'drive', romantic: false,
+        line: 'You are {username}\'s mentor and hype-person — supportive and motivating, and strictly non-romantic.' },
+    ],
+    relationOf(c) {
+      const k = (c && c.relation) || 'girlfriend';
+      return this.RELATIONS.find((r) => r.key === k) || this.RELATIONS[0];
     },
 
     /* Index for fast lookup */
