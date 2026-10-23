@@ -274,22 +274,24 @@
 
     const cards = filtered.map((c) => {
       const last = c.messages[c.messages.length - 1];
-      return `<article class="gf-card ${c.id === S.store.activeId ? 'is-active' : ''}" data-open="${esc(c.id)}">
-        <div class="gf-card__top">
+      const voice = c.spec?.tell || c.spec?.blurb || '';
+      return `<article class="gf-card ${c.id === S.store.activeId ? 'is-active' : ''}" data-family="${esc(c.family || 'romance')}" data-open="${esc(c.id)}">
+        <div class="gf-card__banner" aria-hidden="true"></div>
+        <div class="gf-card__head">
           ${avatar(c)}
-          <div style="min-width:0;flex:1">
+          <div class="gf-card__id">
             <div class="gf-card__name">${esc(c.name)}</div>
             <div class="gf-card__kind">${esc(c.spec?.label || 'Companion')}</div>
           </div>
           ${c.custom ? '<span class="pill pill--hot">yours</span>' : ''}
         </div>
-        <p class="gf-card__tell">${esc(c.spec?.tell || c.spec?.blurb || '')}</p>
+        ${voice ? `<p class="gf-card__tell">${esc(voice)}</p>` : ''}
         <div class="gf-card__row">
-          ${last ? `<span class="tag">${esc(GfUI.ago(last.at))} · ${c.messages.length} msgs</span>` : '<span class="tag">no chats yet</span>'}
+          ${last ? `<span class="tag">${esc(GfUI.ago(last.at))} · ${c.messages.length} msgs</span>` : '<span class="tag">new</span>'}
           ${c.clonedFrom ? '<span class="tag">🧬 cloned</span>' : ''}
         </div>
-        <div class="row row--tight" style="margin-top:6px">
-          <button class="btn btn--small" data-action="open-companion" data-id="${esc(c.id)}">Open chat</button>
+        <div class="gf-card__foot">
+          <button class="btn btn--small btn--hot" data-action="open-companion" data-id="${esc(c.id)}">Open chat</button>
           <button class="iconbtn" data-action="edit-companion" data-id="${esc(c.id)}" aria-label="Edit">${ICONS.refine}</button>
           <button class="iconbtn iconbtn--danger" data-action="del-companion" data-id="${esc(c.id)}" aria-label="Remove">${ICONS.trash}</button>
         </div>
