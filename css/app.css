@@ -879,11 +879,39 @@ html[data-skin="aurora"] .aurora::after{
 .session-top__name{font-size:17px}
 .console__dial{min-height:38px}
 
-.transcript{max-width:860px;padding-top:14px}
+/* ---- CHAT: a fixed column that owns its own scroll ----
+   The transcript scrolls internally and the composer sits in flow at the
+   bottom. This fixes two phone problems at once: the newest message always
+   lands just above the input (never floating high, never hidden), and the
+   keyboard pushes the composer up instead of covering it. */
+.chat-stage{
+  position:fixed; top:0; left:var(--rail); right:0; bottom:0;
+  display:flex; flex-direction:column; min-height:0; max-width:none;
+  margin:0; padding:6px clamp(16px,4vw,44px) 0;
+}
+.chat-stage > #trialbanner{flex:0 0 auto}
+.chat-stage .session-top{flex:0 0 auto; position:static; margin:0 auto; max-width:860px; width:100%}
+.chat-stage .transcript{
+  flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden;
+  display:flex; flex-direction:column;
+  padding:8px 0 12px; max-width:860px; width:100%; margin:0 auto;
+}
+/* pushes a short conversation down so it rests just above the composer,
+   and collapses to nothing once the messages fill the view (so scrolling
+   up to the top still works) */
+.chat-stage .transcript::before{content:""; margin-top:auto; flex:0 0 auto}
+.chat-stage .composer-wrap{
+  position:static; transform:none; left:auto; bottom:auto;
+  width:100%; max-width:860px; margin:0 auto; z-index:1;
+  padding-bottom:max(6px,env(safe-area-inset-bottom));
+}
+.chat-stage .composer-wrap::before{display:none}
+.transcript > .daymark{align-self:center}
 .daymark span{background:var(--sheet);border:1px solid var(--hairline);color:var(--ink-2);font-weight:600}
 
 /* roomier, warmer bubbles — her reply tinted rose, yours a warm gradient */
-.msg{margin-bottom:18px}
+.msg{margin-bottom:18px;align-self:flex-start;max-width:min(760px,92%)}
+.msg--me{align-self:flex-end}
 .msg__who{font-size:12px;font-weight:600;margin-bottom:7px}
 .msg--me .msg__body{
   border-radius:22px 22px 6px 22px;padding:12px 16px;font-size:15.5px;color:#fff;
@@ -955,4 +983,7 @@ html[data-skin="aurora"] .aurora::after{
   .page{max-width:100%}
   .session-top,.transcript{max-width:100%}
   .composer-wrap{width:calc(100vw - 24px)}
+  /* chat column sits below the mobile top bar and above the bottom nav */
+  .chat-stage{top:56px; left:0; bottom:74px; padding:4px 12px 0}
+  .chat-stage .session-top,.chat-stage .transcript,.chat-stage .composer-wrap{max-width:100%}
 }
