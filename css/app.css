@@ -986,4 +986,16 @@ html[data-skin="aurora"] .aurora::after{
   /* chat column sits below the mobile top bar and above the bottom nav */
   .chat-stage{top:56px; left:0; bottom:74px; padding:4px 12px 0}
   .chat-stage .session-top,.chat-stage .transcript,.chat-stage .composer-wrap{max-width:100%}
+
+  /* ---- keyboard up: WhatsApp-style, hand the screen to the chat ----
+     Everything but the messages and the input gets out of the way so the
+     conversation is readable above the keyboard. */
+  body.kb-open .mobile-top,
+  body.kb-open .bottom-nav{display:none}
+  body.kb-open .chat-stage{top:0; bottom:0}
+  body.kb-open .moodbar,
+  body.kb-open .quickreplies,
+  body.kb-open #trialbanner{display:none}
+  body.kb-open .session-top{padding-top:8px; padding-bottom:10px}
+  body.kb-open .composer{box-shadow:0 -2px 20px -12px rgba(70,20,55,.5)}
 }
