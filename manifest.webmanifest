@@ -1,6 +1,6 @@
 {
-  "name": "Aria OS — your companion",
-  "short_name": "Aria OS",
+  "name": "Aria AI — your companion",
+  "short_name": "Aria AI",
   "description": "A private AI companion. Multiple personalities, real memory, and a voice you can clone from a chat.",
   "start_url": "./index.html",
   "scope": "./",

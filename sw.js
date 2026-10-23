@@ -6,7 +6,7 @@
    build, and you still work offline from the last good copy.
    ============================================================ */
 
-const CACHE = 'aria-os-shell-v2';
+const CACHE = 'aria-ai-shell-v3';
 const SHELL = [
   './index.html',
   './css/app.css',
@@ -31,7 +31,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
-        keys.filter((k) => k.startsWith('aria-os-shell-') && k !== CACHE).map((k) => caches.delete(k)),
+        keys.filter((k) => (k.startsWith('aria-os-shell-') || k.startsWith('aria-ai-shell-')) && k !== CACHE).map((k) => caches.delete(k)),
       ))
       .then(() => self.clients.claim()),
   );
@@ -57,9 +57,9 @@ self.addEventListener('fetch', (e) => {
 /* The app posts {type:'NOTIFY', title, body, tag} when she misses you. */
 self.addEventListener('message', (e) => {
   if (e.data?.type !== 'NOTIFY') return;
-  self.registration.showNotification(e.data.title || 'Aria OS', {
+  self.registration.showNotification(e.data.title || 'Aria AI', {
     body: e.data.body || 'She left you a message.',
-    tag: e.data.tag || 'aria-os',
+    tag: e.data.tag || 'aria-ai',
     renotify: true,
     icon: './assets/icon-192.png',
     badge: './assets/icon-192.png',

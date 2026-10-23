@@ -97,7 +97,7 @@
 
     return `<div class="app-shell">
       <aside class="rail">
-        <div class="brand"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         ${admin ? '' : `<button class="newchat" data-action="new-companion">${ICONS.plus} New companion</button>`}
         <nav class="nav" aria-label="Primary">${nav.map(([id, l]) => navButton(id, l)).join('')}</nav>
         <div class="rail__bottom">
@@ -123,7 +123,7 @@
       </aside>
 
       <header class="mobile-top">
-        <div class="brand"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         <div class="row row--tight">
           <button class="iconbtn" data-action="toggle-theme"
                   aria-label="${dark ? 'Switch to light mode' : 'Switch to dark mode'}">${dark ? ICONS.sun : ICONS.moon}</button>
@@ -737,7 +737,7 @@
     const up = mode === 'up';
     return `<div class="gate-root" style="position:relative;min-height:100vh">
       <section class="gate-card">
-        <div class="brand" style="padding:0 0 16px"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand" style="padding:0 0 16px"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         <h2>${up ? 'Make an account' : 'Welcome back'}</h2>
         <p class="muted" style="font-size:13px;margin:6px 0 20px">
           ${up
@@ -788,7 +788,7 @@
   function renderAgeGate() {
     return `<div class="gate-root" style="position:relative;min-height:100vh">
       <section class="gate-card">
-        <div class="brand" style="padding:0 0 14px"><span class="brand__mark">♥</span><span>Aria OS</span></div>
+        <div class="brand" style="padding:0 0 14px"><span class="brand__mark">♥</span><span>Aria AI</span></div>
         <h2>Adults only</h2>
         <p class="muted" style="font-size:13.5px;line-height:1.6;margin:8px 0 20px">
           This is a private companion app for adults. Conversations here can be explicit.
@@ -1744,7 +1744,7 @@
           const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
           const a3 = document.createElement('a');
           a3.href = URL.createObjectURL(blob);
-          a3.download = `aria-os-backup-${GfUI.dateKey()}.json`;
+          a3.download = `aria-ai-backup-${GfUI.dateKey()}.json`;
           a3.click();
           setTimeout(() => URL.revokeObjectURL(a3.href), 1000);
           toast('Backup saved (keys left out on purpose)');
@@ -1993,30 +1993,44 @@
      BOOT
      ============================================================ */
 
+  let handledUid = null;       // the user whose sign-in we are running / have run
+
   async function onCloudAuth(user) {
     if (user) {
-      const phone = GfCloud.emailToPhone(user.email);
-      S.open(user.email, user.user_metadata?.name || '', phone);
-      S.store.account.cloud = true;
-      S.store.account.phone = phone;
-      await refreshAccess(user.user_metadata?.name);
-      const remote = await GfCloud.pull().catch(() => null);
-      if (remote && remote.companions && Object.keys(remote.companions).length) {
-        // remote wins only when this device has nothing yet
-        const localMsgs = S.list().reduce((n, c) => n + c.messages.length, 0);
-        if (!localMsgs) {
-          try { S.importAll({ product: 'Aria OS', data: remote }); } catch (_) {}
+      // boot() and the INITIAL_SESSION / SIGNED_IN events all arrive here for the
+      // same login. Run the heavy path once per user, not three times.
+      if (handledUid === user.id) return;
+      handledUid = user.id;
+      try {
+        const phone = GfCloud.emailToPhone(user.email);
+        S.open(user.email, user.user_metadata?.name || '', phone);
+        S.store.account.cloud = true;
+        S.store.account.phone = phone;
+        await refreshAccess(user.user_metadata?.name);
+        const remote = await GfCloud.pull().catch(() => null);
+        if (remote && remote.companions && Object.keys(remote.companions).length) {
+          // remote wins only when this device has nothing yet
+          const localMsgs = S.list().reduce((n, c) => n + c.messages.length, 0);
+          if (!localMsgs) {
+            try { S.importAll({ product: 'Aria OS', data: remote }); } catch (_) {}
+          }
         }
+        // Identity always comes from the live auth session, never from a
+        // synced/imported data blob — reassert in case anything upstream
+        // touched it.
+        S.store.account.cloud = true;
+        S.store.account.phone = phone;
+        if (isAdminUser()) page = 'admin';
+      } catch (e) {
+        // never leave the person staring at a dead login screen
+        console.warn('sign-in setup failed', e);
+        handledUid = null;
+        toast(e.message || 'Signed in, but loading your data failed. Reload to retry.');
       }
-      // Identity always comes from the live auth session, never from a
-      // synced/imported data blob — reassert in case anything upstream
-      // touched it.
-      S.store.account.cloud = true;
-      S.store.account.phone = phone;
-      if (isAdminUser()) page = 'admin';
       booted = true;
       render();
     } else {
+      handledUid = null;
       window.GfKeys = [];
       window.GfKey = { v: '' };
       GfAccess.set(null);
@@ -2049,6 +2063,8 @@
       if (u) { await onCloudAuth(u); }
       else { booted = true; render(); }
       GfAccess.startWatch();
+      // if the library was slow, init finishes after first paint — onAuthStateChange
+      // then delivers the restored session through onCloudAuth, so nothing is lost.
     } else {
       S.open('local', '');
       booted = true;

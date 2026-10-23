@@ -425,7 +425,7 @@
       clone.settings.geminiKey = '';
     }
     return {
-      product: 'Aria OS',
+      product: 'Aria OS',   // internal id, kept so old backups still import
       exportVersion: 1,
       exportedAt: new Date().toISOString(),
       includesKeys: !!includeKeys,
@@ -436,7 +436,7 @@
 
   function importAll(payload) {
     if (!payload || payload.product !== 'Aria OS') {
-      throw new Error('That is not an Aria OS backup file.');
+      throw new Error('That is not an Aria AI backup file.');
     }
     // Account identity (email/phone/cloud/name) always comes from the live
     // auth session/device — never from an imported data blob, which may be

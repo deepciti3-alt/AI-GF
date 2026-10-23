@@ -381,7 +381,7 @@ A real girlfriend never only replies to the question. In most replies add ONE th
       if (k) h.Authorization = `Bearer ${k}`;
       if (provider.key === 'openrouter') {
         h['HTTP-Referer'] = location.origin;
-        h['X-Title'] = 'Aria OS';
+        h['X-Title'] = 'Aria AI';
       }
     }
     return h;

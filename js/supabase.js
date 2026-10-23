@@ -102,29 +102,63 @@
     });
   }
 
+  let initPromise = null;
+  let initError = '';
+
   async function init(authCb) {
-    onAuthChange = authCb || null;
+    if (authCb) onAuthChange = authCb;
     if (!configured()) return { enabled: false };
-    try {
-      if (!window.supabase) await loadScript(SDK);
-      sb = window.supabase.createClient(GF_SUPABASE.url, GF_SUPABASE.anonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
-      });
-      ready = true;
+    if (ready && sb) return { enabled: true, user };
+    // one init at a time — boot() and a retry from the login form must not race
+    if (initPromise) return initPromise;
 
-      const { data } = await sb.auth.getSession();
-      user = data?.session?.user || null;
+    initPromise = (async () => {
+      try {
+        if (!window.supabase) await loadScript(SDK);
+        sb = window.supabase.createClient(GF_SUPABASE.url, GF_SUPABASE.anonKey, {
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+        });
 
-      sb.auth.onAuthStateChange((event, session) => {
-        user = session?.user || null;
-        if (onAuthChange) onAuthChange(user);
-      });
+        const { data } = await sb.auth.getSession();
+        user = data?.session?.user || null;
 
-      return { enabled: true, user };
-    } catch (e) {
-      console.warn('cloud init failed', e);
-      ready = false;
-      return { enabled: false, error: e.message };
+        sb.auth.onAuthStateChange((event, session) => {
+          const next = session?.user || null;
+          user = next;
+          // A silent hourly token refresh is not a new login. Re-running the whole
+          // sign-in path for it re-opens the store and re-pulls from the cloud.
+          if (event === 'TOKEN_REFRESHED') return;
+          // IMPORTANT: never call another Supabase method (rpc, from, ...) from inside
+          // this callback. supabase-js holds its auth lock while it runs the callback,
+          // and rpc() needs that same lock to read the session, so the sign-in call
+          // never resolves and the login button hangs. Defer to the next tick.
+          if (onAuthChange) setTimeout(() => { try { onAuthChange(next, event); } catch (e) { console.warn(e); } }, 0);
+        });
+
+        ready = true;
+        initError = '';
+        return { enabled: true, user };
+      } catch (e) {
+        console.warn('cloud init failed', e);
+        ready = false;
+        sb = null;
+        initError = e.message || 'Could not reach the server.';
+        return { enabled: false, error: initError };
+      } finally {
+        initPromise = null;
+      }
+    })();
+    return initPromise;
+  }
+
+  /* The login form calls this before every attempt. If the very first init
+     failed (slow CDN, offline at launch) the old code left sb = null and the
+     next click threw "Cannot read properties of null". Retry instead. */
+  async function ensureReady() {
+    if (isEnabled()) return;
+    await init();
+    if (!isEnabled()) {
+      throw new Error('Could not connect to the server. Check your internet and try again.');
     }
   }
 
@@ -137,15 +171,24 @@
     if (/invalid login credentials/i.test(m)) return 'Wrong number or password.';
     if (/already registered|already been registered|user already/i.test(m)) return 'That number already has an account. Sign in instead.';
     if (/password should be at least/i.test(m)) return 'Password must be at least 6 characters.';
-    if (/email address .* is invalid/i.test(m)) return 'That does not look like a valid mobile number.';
-    if (/rate limit|too many/i.test(m)) return 'Too many attempts. Wait a minute and try again.';
-    if (/confirm/i.test(m)) return 'Email confirmation is still switched on in Supabase. Turn it off — see SETUP-SUPABASE.md step 6.';
+    // Supabase rejected the synthetic address itself (domain check). This is a
+    // server-side setting, NOT a typo by the user — say so instead of blaming the number.
+    if (/email address .* is invalid|email_address_invalid|unable to validate email/i.test(m)) {
+      return 'The server rejected the login address for this number (setup issue, not your number). Admin: see SETUP-SUPABASE.md → Troubleshooting.';
+    }
+    if (/signups? not allowed|signup.* disabled|email.*(logins?|signups?).* disabled|provider is not enabled/i.test(m)) {
+      return 'Sign-up/sign-in with a password is switched off in Supabase. Admin: Authentication → Providers → Email → enable it.';
+    }
+    if (/rate limit|too many|over_email_send_rate_limit/i.test(m)) return 'Too many attempts. Wait a minute and try again.';
+    if (/failed to fetch|networkerror|network request failed|load failed/i.test(m)) return 'Could not reach the server. Check your internet and try again.';
+    if (/email not confirmed|confirm/i.test(m)) return 'Email confirmation is still switched on in Supabase. Turn it off — see SETUP-SUPABASE.md step 6.';
     return m || 'Something went wrong.';
   }
 
   async function signUpPhone(phone, password, name) {
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
+    await ensureReady();
     const { data, error } = await sb.auth.signUp({
       email: phoneToEmail(phone),
       password,
@@ -161,6 +204,7 @@
 
   async function signInPhone(phone, password) {
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
+    await ensureReady();
     const { data, error } = await sb.auth.signInWithPassword({
       email: phoneToEmail(phone),
       password,
@@ -171,13 +215,14 @@
 
   async function updatePassword(password) {
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
+    await ensureReady();
     const { error } = await sb.auth.updateUser({ password });
     if (error) throw new Error(friendlyAuthError(error.message));
     return true;
   }
 
   async function signOut() {
-    try { await sb.auth.signOut(); } catch (_) {}
+    try { if (sb) await sb.auth.signOut(); } catch (_) {}
     user = null;
   }
 
@@ -193,7 +238,7 @@
      This needs no service_role key.
      ------------------------------------------------------------ */
   async function createAccountDetached(phone, password, name) {
-    if (!isEnabled()) throw new Error('Cloud not configured');
+    await ensureReady();
     if (!validPhone(phone)) throw new Error('Enter a valid 10-digit mobile number.');
     if (String(password).length < 6) throw new Error('Password must be at least 6 characters.');
 
@@ -285,7 +330,7 @@
   }
 
   window.GfCloud = {
-    init, isEnabled, configured, currentUser, raw,
+    init, ensureReady, isEnabled, configured, currentUser, raw,
     normalisePhone, validPhone, phoneToEmail, emailToPhone, prettyPhone,
     signUpPhone, signInPhone, updatePassword, signOut, createAccountDetached,
     pull, push, pushDebounced,
