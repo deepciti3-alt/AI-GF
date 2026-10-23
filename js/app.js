@@ -879,7 +879,7 @@
 
     if (page === 'chat') {
       autoResize();
-      requestAnimationFrame(() => scrollDown(false));
+      requestAnimationFrame(() => { syncComposerSpace(); scrollDown(false); });
     }
   }
 
@@ -898,7 +898,67 @@
   function scrollDown(smooth = true) {
     const t = $('#transcript');
     if (!t) return;
-    window.scrollTo({ top: document.body.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    // the transcript owns its own scroll now (fixed chat column)
+    t.scrollTo({ top: t.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  }
+
+  /* ============================================================
+     INCREMENTAL CHAT — append messages to the DOM instead of
+     re-rendering the whole page. A full render() rebuilds the
+     composer <textarea>, which on a phone slams the keyboard shut
+     every time she sends a message. Appending nodes leaves the
+     textarea (and the open keyboard) untouched.
+     ============================================================ */
+
+  const chatLive = () => page === 'chat' && !!document.getElementById('transcript');
+
+  function dropWelcome() {
+    const t = document.getElementById('transcript');
+    const w = t && t.querySelector('.empty');
+    if (w) w.remove();
+  }
+
+  function appendMsgNode(c, m) {
+    const t = document.getElementById('transcript');
+    if (!t || !m) return;
+    dropWelcome();
+    const wrap = document.createElement('div');
+    wrap.innerHTML = messageHtml(m, c);
+    const node = wrap.firstElementChild;
+    if (node) { t.appendChild(node); scrollDown(false); }
+  }
+
+  function showTypingNode(c) {
+    let n = document.getElementById('streamingMessage');
+    if (n) return n.querySelector('.msg__body');
+    const t = document.getElementById('transcript');
+    if (!t) return null;
+    dropWelcome();
+    n = document.createElement('article');
+    n.className = 'msg msg--ai';
+    n.id = 'streamingMessage';
+    n.innerHTML = `<div class="msg__who"><span class="msg__mark"></span>${esc(c.name)}</div>`
+      + '<div class="msg__body"><span class="typing"><i></i><i></i><i></i></span></div>';
+    t.appendChild(n);
+    scrollDown(false);
+    return n.querySelector('.msg__body');
+  }
+
+  function removeTypingNode() {
+    const n = document.getElementById('streamingMessage');
+    if (n) n.remove();
+  }
+
+  function setChatStatus(text, busy) {
+    const s = document.querySelector('.session-top__status');
+    if (!s) return;
+    const dot = busy ? 'dot--busy' : (window.GfApi.ready() ? '' : 'dot--off');
+    s.innerHTML = `<span class="dot ${dot}"></span>${esc(text)}`;
+  }
+
+  function statusLabel(c) {
+    const mood = C.MOODS[c.mood] || C.MOODS[C.DEFAULT_MOOD];
+    return window.GfApi.ready() ? `${mood.emoji} ${mood.label}` : 'no AI key yet';
   }
 
   function autoResize() {
@@ -906,7 +966,13 @@
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 170) + 'px';
+    syncComposerSpace();
   }
+
+  /* The composer now lives in normal flow at the bottom of the fixed chat
+     column, so the layout reserves its space on its own — nothing to
+     measure. Kept as a no-op so existing call sites stay simple. */
+  function syncComposerSpace() {}
 
   function humanDelay(text) {
     if (!S.store.settings.typingDelay) return 0;
@@ -935,8 +1001,9 @@
 
     if (input && preset == null) { input.value = ''; delete draftState.composerInput; autoResize(); }
 
-    S.pushMessage(c.id, 'user', text);
-    if (page === 'chat') render();     // his message shows at once
+    const m = S.pushMessage(c.id, 'user', text);
+    if (chatLive()) appendMsgNode(c, m);        // his message shows at once, keyboard stays
+    else if (page === 'chat') render();
     scheduleReply(c);
   }
 
@@ -971,8 +1038,8 @@
       burst.acked = true;
       setTimeout(() => {
         if (!sending && settleTimer) {
-          S.pushMessage(c.id, 'assistant', ackLine(), { mood: c.mood, cont: true, ack: true });
-          if (page === 'chat') render();
+          const m = S.pushMessage(c.id, 'assistant', ackLine(), { mood: c.mood, cont: true, ack: true });
+          if (chatLive()) appendMsgNode(c, m); else if (page === 'chat') render();
         }
       }, 450 + Math.random() * 600);
     }
@@ -996,11 +1063,11 @@
     // "seen" — a short human pause before the typing dots
     if (b.readDelay && S.store.settings.typingDelay !== false) {
       herReading = true;
-      render();
+      if (chatLive()) setChatStatus('seen', true); else render();
       await sleep(500 + Math.random() * 1400);
       herReading = false;
     }
-    render();
+    if (chatLive()) { setChatStatus('typing…', true); showTypingNode(c); } else render();
 
     // decided up front so a split reply streams only its first bubble
     const splitPlan = !!b.doubleText && Math.random() < 0.45;
@@ -1021,9 +1088,10 @@
       sending = false;
       herReading = false;
       abortCtl = null;
-      if (e.name === 'AbortError') { streamText = ''; render(); return; }
-      S.pushMessage(c.id, 'assistant', `⚠️ ${e.message}`, { error: true });
-      render();
+      removeTypingNode();
+      if (e.name === 'AbortError') { streamText = ''; if (!chatLive()) render(); else setChatStatus(statusLabel(c), false); return; }
+      const em = S.pushMessage(c.id, 'assistant', `⚠️ ${e.message}`, { error: true });
+      if (chatLive()) { appendMsgNode(c, em); setChatStatus(statusLabel(c), false); } else render();
       return;
     }
 
@@ -1033,7 +1101,9 @@
     sending = false;
     abortCtl = null;
     streamText = '';
+    removeTypingNode();
     await deliver(c, reply, {}, splitPlan);
+    if (chatLive()) setChatStatus(statusLabel(c), false);
 
     if (S.store.settings.autoSpeak) speak(reply);
     GfMemory.maybeExtract(c).then((r) => {
@@ -1066,19 +1136,20 @@
     if (lines.length > 2) lines = [lines[0], lines.slice(1).join(' ')];
     const doSplit = split && lines.length === 2 && !/```|^\s*[-*•]\s/m.test(text);
     if (!doSplit) {
-      S.pushMessage(c.id, 'assistant', text, { mood: c.mood, ...extra });
-      if (page === 'chat') render();
+      const m = S.pushMessage(c.id, 'assistant', text, { mood: c.mood, ...extra });
+      if (chatLive()) appendMsgNode(c, m); else if (page === 'chat') render();
       return;
     }
     for (let i = 0; i < lines.length; i++) {
       if (i) {
         herTyping = true;
-        if (page === 'chat') render();
+        if (chatLive()) { setChatStatus('typing…', true); showTypingNode(c); } else if (page === 'chat') render();
         await sleep(600 + Math.min(2000, lines[i].length * 40) + Math.random() * 600);
         herTyping = false;
+        if (chatLive()) removeTypingNode();
       }
-      S.pushMessage(c.id, 'assistant', lines[i], i ? { mood: c.mood, cont: true } : { mood: c.mood, ...extra });
-      if (page === 'chat') render();
+      const m = S.pushMessage(c.id, 'assistant', lines[i], i ? { mood: c.mood, cont: true } : { mood: c.mood, ...extra });
+      if (chatLive()) appendMsgNode(c, m); else if (page === 'chat') render();
     }
   }
 
@@ -1848,7 +1919,13 @@
     event.preventDefault();
 
     try {
-      if (form.id === 'composerForm') { send(); return; }
+      if (form.id === 'composerForm') {
+        const box = $('#composerInput');
+        send();
+        // keep the phone keyboard open — refocus within the same tap gesture
+        if (box) box.focus({ preventScroll: true });
+        return;
+      }
 
       if (form.id === 'factForm') {
         const text = new FormData(form).get('text');
@@ -2048,14 +2125,30 @@
 
   /* ---------- scroll ---------- */
 
-  window.addEventListener('scroll', () => {
+  // scroll now happens inside #transcript; capture it from the document
+  document.addEventListener('scroll', (e) => {
     const jump = $('#jumpBtn');
-    if (!jump) return;
-    const near = window.innerHeight + window.scrollY >= document.body.scrollHeight - 220;
+    const t = $('#transcript');
+    if (!jump || !t || e.target !== t) return;
+    const near = t.scrollTop + t.clientHeight >= t.scrollHeight - 160;
     jump.classList.toggle('on', !near && page === 'chat');
-  }, { passive: true });
+  }, { passive: true, capture: true });
 
   window.addEventListener('beforeunload', () => { S.saveNow?.(); });
+
+  // keep the composer gap right when the window resizes or the phone keyboard
+  // opens/closes (visualViewport fires on keyboard show/hide on mobile)
+  let spaceRaf = null;
+  const reflowChat = () => {
+    if (page !== 'chat') return;
+    cancelAnimationFrame(spaceRaf);
+    spaceRaf = requestAnimationFrame(() => { syncComposerSpace(); scrollDown(false); });
+  };
+  window.addEventListener('resize', reflowChat);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', reflowChat);
+    window.visualViewport.addEventListener('scroll', reflowChat);
+  }
 
   /* ============================================================
      BOOT

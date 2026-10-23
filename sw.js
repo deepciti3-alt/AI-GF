@@ -6,7 +6,7 @@
    build, and you still work offline from the last good copy.
    ============================================================ */
 
-const CACHE = 'aria-ai-shell-v3';
+const CACHE = 'aria-ai-shell-v4';
 const SHELL = [
   './index.html',
   './css/app.css',
