@@ -1457,6 +1457,7 @@
             ${num('bh-qto', 'Quiet hours until (0–23)', b.quietTo)}
           </div>
           ${sw('bh-double', 'Double texting', b.doubleText, 'Sometimes sends her reply as two separate messages, a moment apart.')}
+          ${sw('bh-backchannel', 'Waits for him to finish', b.backchannel !== false, 'While he\'s still typing a burst of messages she drops a quick "hmm / acha", then replies once he\'s done.')}
           ${sw('bh-read', 'Reading pause', b.readDelay, 'A short random pause before she starts typing.')}
           ${sw('bh-init', 'Adds her own thing', b.initiative, 'Every reply brings something of hers — what she\'s doing, an opinion, a callback — instead of only answering.')}
           <button class="btn" id="bh-save">Save behaviour</button>
@@ -1627,6 +1628,7 @@
           quietFrom: n('bh-qfrom', 0, 23),
           quietTo: n('bh-qto', 0, 23),
           doubleText: on('bh-double'),
+          backchannel: on('bh-backchannel'),
           readDelay: on('bh-read'),
           initiative: on('bh-init'),
         };

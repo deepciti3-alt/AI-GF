@@ -296,7 +296,8 @@ ${JSON.stringify(A).slice(0, 14000)}`;
 
   const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
 
-  async function build({ name, source, note, herName, emoji, onStatus }) {
+  async function build({ name, source, note, herName, emoji, relation, onStatus }) {
+    const rel = window.GfConfig.relationOf({ relation });
     const api = window.GfApi;
     const status = onStatus || (() => {});
 
@@ -371,10 +372,16 @@ ${JSON.stringify(A).slice(0, 14000)}`;
       tell: cut(V.tell || (A.sample_lines || [])[0] || '', 300),
     };
 
+    // a non-romantic clone must not carry an explicit spice spec
+    if (!rel.romantic) {
+      spec.spice = 'Strictly platonic — no flirting, no sexual content, ever.';
+    }
+
     const gf = window.GfStore.createCompanion({
       name: cut(V.name || subject || name || 'Her', 40),
       emoji: emoji || '✨',
-      family: 'romance',
+      family: rel.family,
+      relation: rel.key,
       spec,
       clonedFrom: {
         subject,

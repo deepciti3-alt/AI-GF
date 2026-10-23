@@ -47,6 +47,7 @@
     cloneSource: '',
     cloneParticipants: [],
     cloneHer: '',
+    cloneRelation: 'girlfriend',
     cloneBusy: false,
     cloneStatus: '',
     authMode: 'in',
@@ -62,7 +63,6 @@
     ['companions', 'Companions'],
     ['clone', 'Clone Lab'],
     ['memory', 'Memory'],
-    ['gallery', 'Gallery'],
     ['settings', 'Settings'],
   ];
   const MOBILE_NAV = [['chat', 'Chat'], ['companions', 'Companions'], ['clone', 'Clone Lab'], ['memory', 'Memory'], ['more', 'More']];
@@ -213,7 +213,6 @@
           <div class="composer__row">
             <div class="composer__tools">
               <button type="button" class="iconbtn" data-action="voice-input" aria-label="Speak">${ICONS.mic}</button>
-              <button type="button" class="iconbtn" data-action="make-image" aria-label="Ask for a picture">${ICONS.image}</button>
               <button type="button" class="iconbtn" data-action="attach" aria-label="Attach a file">${ICONS.attach}</button>
             </div>
             ${sending
@@ -404,6 +403,17 @@
           <div class="field">
             <label for="cloneName">Her name (optional)</label>
             <input class="input" id="cloneName" placeholder="leave blank and it reads the name out of the chat">
+          </div>
+
+          <div class="field">
+            <label>What is she to you?</label>
+            <div class="chips">
+              ${C.RELATIONS.map((r) => `
+                <button type="button" class="chip-btn ${U.cloneRelation === r.key ? 'is-active' : ''}" data-clonerel="${esc(r.key)}">
+                  ${r.emoji} ${esc(r.label)}
+                </button>`).join('')}
+            </div>
+            <span class="hint">Friend, sibling and mentor are kept strictly non-romantic — no flirting, no spicy, whatever mood is on.</span>
           </div>
 
           <div class="field">
@@ -926,7 +936,52 @@
     if (input && preset == null) { input.value = ''; delete draftState.composerInput; autoResize(); }
 
     S.pushMessage(c.id, 'user', text);
-    await requestReply(c);
+    if (page === 'chat') render();     // his message shows at once
+    scheduleReply(c);
+  }
+
+  /* ============================================================
+     NATURAL RHYTHM — wait for him to finish, backchannel while he types
+     ------------------------------------------------------------
+     Instead of replying the instant he hits send, she waits a beat. If
+     he fires off a second message she resets the wait and sometimes drops
+     a quick "hmm / acha" so he knows she's listening — then gives her real
+     reply once he's actually done.
+     ============================================================ */
+
+  let settleTimer = null;
+  let burst = { count: 0, acked: false };
+
+  const ackLine = () => {
+    const list = (C.BACKCHANNELS && C.BACKCHANNELS.length) ? C.BACKCHANNELS : ['hmm'];
+    return list[Math.floor(Math.random() * list.length)];
+  };
+
+  function scheduleReply(c) {
+    const b = behaviour();
+    if (b.backchannel === false) { requestReply(c); return; }
+    // she's already replying — her tail check will pick up new messages
+    if (sending) return;
+
+    burst.count++;
+    clearTimeout(settleTimer);
+
+    // a tiny "hmm / acha" while he's clearly still mid-thought
+    if (burst.count >= 2 && !burst.acked && Math.random() < 0.6) {
+      burst.acked = true;
+      setTimeout(() => {
+        if (!sending && settleTimer) {
+          S.pushMessage(c.id, 'assistant', ackLine(), { mood: c.mood, cont: true, ack: true });
+          if (page === 'chat') render();
+        }
+      }, 450 + Math.random() * 600);
+    }
+
+    settleTimer = setTimeout(() => {
+      settleTimer = null;
+      burst = { count: 0, acked: false };
+      requestReply(c);
+    }, 850 + Math.random() * 650);
   }
 
   /* Ask her for a reply to whatever the conversation currently is. Used by
@@ -948,7 +1003,7 @@
     render();
 
     // decided up front so a split reply streams only its first bubble
-    const splitPlan = !!b.doubleText && Math.random() < 0.55;
+    const splitPlan = !!b.doubleText && Math.random() < 0.45;
     const firstPart = (t) => (splitPlan ? String(t).split(/\n+/)[0] : t);
 
     abortCtl = new AbortController();
@@ -984,6 +1039,12 @@
     GfMemory.maybeExtract(c).then((r) => {
       if (r && r.added) render();
     }).catch(() => {});
+
+    // he kept texting while she was replying — answer the newer messages too
+    const tail = c.messages[c.messages.length - 1];
+    if (tail && tail.role === 'user' && behaviour().backchannel !== false) {
+      scheduleReply(c);
+    }
   }
 
   /* ============================================================
@@ -1000,8 +1061,10 @@
 
   /* One reply, sometimes as two or three bubbles a moment apart. */
   async function deliver(c, text, extra = {}, split = false) {
-    const lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
-    const doSplit = split && lines.length > 1 && lines.length <= 4 && !/```|^\s*[-*•]\s/m.test(text);
+    let lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    // never more than two bubbles — fold any extra into the second
+    if (lines.length > 2) lines = [lines[0], lines.slice(1).join(' ')];
+    const doSplit = split && lines.length === 2 && !/```|^\s*[-*•]\s/m.test(text);
     if (!doSplit) {
       S.pushMessage(c.id, 'assistant', text, { mood: c.mood, ...extra });
       if (page === 'chat') render();
@@ -1273,7 +1336,7 @@
   }
 
   function openMorePicker() {
-    const extra = [['gallery', 'Gallery'], ['settings', 'Settings']]
+    const extra = [['settings', 'Settings']]
       .concat(isAdminUser() ? [['admin', 'Admin']] : []);
     picker('More', extra.map(([id, label], i) => ({
       value: 'nav:' + id, label, index: i + 1, selected: page === id,
@@ -1435,6 +1498,7 @@
       const { companion } = await GfClone.build({
         name, source, note,
         herName: U.cloneHer,
+        relation: U.cloneRelation,
         emoji: '🧬',
         onStatus: (m) => {
           U.cloneStatus = m;
@@ -1529,6 +1593,9 @@
     const her = event.target.closest('[data-cloneher]');
     if (her) { U.cloneHer = her.dataset.cloneher; render(); return; }
 
+    const rel = event.target.closest('[data-clonerel]');
+    if (rel) { U.cloneRelation = rel.dataset.clonerel; render(); return; }
+
     const am = event.target.closest('[data-authmode]');
     if (am) { U.authMode = am.dataset.authmode; render(); return; }
 
@@ -1573,7 +1640,6 @@
         case 'scroll-down': scrollDown(); break;
         case 'stop': window.GfApi.stop(); abortCtl?.abort(); break;
         case 'voice-input': toggleVoice(); break;
-        case 'make-image': askForImage(); break;
         case 'attach': $('#fileInput').click(); break;
 
         case 'copy-msg': {

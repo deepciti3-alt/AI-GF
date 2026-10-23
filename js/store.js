@@ -303,13 +303,14 @@
 
   /* Create a companion from an arbitrary spec — used by the Clone Lab and
      by "make your own" in the Companions page. */
-  function createCompanion({ name, emoji, family, spec, systemPrompt, clonedFrom, avatarImg }) {
+  function createCompanion({ name, emoji, family, spec, systemPrompt, clonedFrom, avatarImg, relation }) {
     const st = S.store;
     const id = uid('gf');
     st.companions[id] = {
       id,
       personaId: null,
       family: family || 'romance',
+      relation: relation || 'girlfriend',
       name: String(name || 'Her').slice(0, 40),
       emoji: emoji || '💜',
       avatarImg: avatarImg || '',
